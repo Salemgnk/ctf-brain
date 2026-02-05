@@ -1,9 +1,10 @@
 mod app;
 mod models;
+mod storage;
 mod ui;
 
 use anyhow::Result;
-use app::{App, AppView};
+use app::{AddBoxForm, App, AppView};
 use crossterm::{
     event::{self, Event, KeyCode},
     execute,
@@ -13,8 +14,15 @@ use ratatui::{backend::CrosstermBackend, Terminal};
 use std::io;
 
 fn main() -> Result<()> {
-    // Create sample data for testing
-    let sample_boxes = vec![
+    // Load boxes from storage, or use sample data if empty
+    let mut boxes = storage::load_boxes().unwrap_or_else(|e| {
+        eprintln!("Warning: Failed to load boxes ({}). Starting with sample data.", e);
+        Vec::new()
+    });
+    
+    // If no boxes exist, create sample data for testing
+    if boxes.is_empty() {
+        boxes = vec![
         models::CtfBox {
             id: 1,
             title: "Lame".to_string(),
@@ -86,8 +94,10 @@ fn main() -> Result<()> {
             notes: vec![],
         },
     ];
+    }
 
-    let mut app = App::new(sample_boxes);
+    let mut app = App::new(boxes);
+    let mut add_box_form: Option<AddBoxForm> = None;
 
     // Setup terminal
     enable_raw_mode()?;
@@ -104,6 +114,14 @@ fn main() -> Result<()> {
             match &app.view {
                 AppView::List => ui::list::render(f, &app, area),
                 AppView::Details(id) => ui::detail::render(f, &app, area, *id),
+                AppView::AddBox => {
+                    // Render list in background
+                    ui::list::render(f, &app, area);
+                    // Render form modal on top
+                    if let Some(form) = &add_box_form {
+                        ui::add_box::render(f, &app, form, area);
+                    }
+                }
             }
         })?;
 
@@ -111,7 +129,16 @@ fn main() -> Result<()> {
         if event::poll(std::time::Duration::from_millis(100))? {
             if let Event::Key(key) = event::read()? {
                 match key.code {
-                    KeyCode::Char('q') => app.quit(),
+                    KeyCode::Char('q') => {
+                        if app.view != AppView::AddBox {
+                            app.quit()
+                        }
+                    }
+                    KeyCode::Char('a') => {
+                        if app.view == AppView::List {
+                            add_box_form = Some(app.start_add_box());
+                        }
+                    }
                     KeyCode::Down | KeyCode::Char('j') => {
                         if app.view == AppView::List {
                             app.next();
@@ -125,9 +152,64 @@ fn main() -> Result<()> {
                     KeyCode::Enter => {
                         if app.view == AppView::List {
                             app.select_current();
+                        } else if app.view == AppView::AddBox {
+                            if let Some(form) = &add_box_form {
+                                match app.submit_add_box(form) {
+                                    Ok(_) => {
+                                        // Save immediately
+                                        if let Err(e) = storage::save_boxes(&app.boxes) {
+                                            eprintln!("Failed to save: {}", e);
+                                        }
+                                        add_box_form = None;
+                                    }
+                                    Err(e) => {
+                                        // TODO: Show error message
+                                        eprintln!("Validation error: {}", e);
+                                    }
+                                }
+                            }
                         }
                     }
-                    KeyCode::Esc | KeyCode::Backspace => app.go_back(),
+                    KeyCode::Tab => {
+                        if let Some(form) = &mut add_box_form {
+                            app.next_field(form);
+                        }
+                    }
+                    KeyCode::BackTab => {
+                        if let Some(form) = &mut add_box_form {
+                            app.previous_field(form);
+                        }
+                    }
+                    KeyCode::Char(c) => {
+                        if let Some(form) = &mut add_box_form {
+                            match form.current_field {
+                                0 => form.title.push(c),
+                                1 => form.platform.push(c),
+                                2 => form.ip.push(c),
+                                3 => form.tags.push(c),
+                                _ => {}
+                            }
+                        }
+                    }
+                    KeyCode::Backspace => {
+                        if let Some(form) = &mut add_box_form {
+                            match form.current_field {
+                                0 => { form.title.pop(); }
+                                1 => { form.platform.pop(); }
+                                2 => { form.ip.pop(); }
+                                3 => { form.tags.pop(); }
+                                _ => {}
+                            }
+                        }
+                    }
+                    KeyCode::Esc => {
+                        if app.view == AppView::AddBox {
+                            app.cancel_form();
+                            add_box_form = None;
+                        } else {
+                            app.go_back();
+                        }
+                    }
                     _ => {}
                 }
             }
@@ -136,6 +218,11 @@ fn main() -> Result<()> {
         if app.should_quit {
             break;
         }
+    }
+
+    // Save boxes before exit
+    if let Err(e) = storage::save_boxes(&app.boxes) {
+        eprintln!("Warning: Failed to save boxes: {}", e);
     }
 
     // Cleanup
