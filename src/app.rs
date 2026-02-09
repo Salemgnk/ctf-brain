@@ -10,6 +10,7 @@ pub enum AppView {
     Details(i32),
     AddBox,
     DeleteBox(i32),
+    EditEnvVars(i32),
 }
 
 #[derive(Debug, Clone)]
