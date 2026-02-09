@@ -22,6 +22,13 @@ pub struct AddBoxForm {
     pub current_field: usize,
 }
 
+#[derive(Debug, Clone)]
+pub struct EnvVarForm {
+    pub key: String,
+    pub value: String,
+    pub current_field: usize,
+}
+
 pub struct App {
     pub view: AppView,
     pub boxes: Vec<CtfBox>,
@@ -176,6 +183,61 @@ impl App {
 
     pub fn cancel_delete(&mut self) {
         self.view = AppView::List;
+    }
+
+    pub fn start_edit_env_vars(&mut self, box_id: i32) -> Option<EnvVarForm> {
+        if self.boxes.iter().any(|b| b.id == box_id) {
+            self.view = AppView::EditEnvVars(box_id);
+            Some(EnvVarForm {
+                key: String::new(),
+                value: String::new(),
+                current_field: 0,
+            })
+        } else {
+            None
+        }
+    }
+
+    pub fn add_env_var(&mut self, box_id: i32, key: String, value: String) -> Result<(), String> {
+        // Validation
+        if key.trim().is_empty() {
+            return Err("Key cannot be empty".to_string());
+        }
+
+        // Only alphanumeric and underscore allowed
+        if !key.chars().all(|c| c.is_alphanumeric() || c == '_') {
+            return Err("Key must be alphanumeric with underscores only".to_string());
+        }
+
+        // Add to box
+        if let Some(ctf_box) = self.boxes.iter_mut().find(|b| b.id == box_id) {
+            ctf_box.env_vars.insert(key.trim().to_uppercase(), value);
+            ctf_box.updated_date = chrono::Utc::now();
+            Ok(())
+        } else {
+            Err("Box not found".to_string())
+        }
+    }
+
+    pub fn delete_env_var(&mut self, box_id: i32, key: &str) -> Result<(), String> {
+        if let Some(ctf_box) = self.boxes.iter_mut().find(|b| b.id == box_id) {
+            if ctf_box.env_vars.remove(key).is_some() {
+                ctf_box.updated_date = chrono::Utc::now();
+                Ok(())
+            } else {
+                Err("Variable not found".to_string())
+            }
+        } else {
+            Err("Box not found".to_string())
+        }
+    }
+
+    pub fn next_env_field(&mut self, form: &mut EnvVarForm) {
+        form.current_field = (form.current_field + 1) % 2;
+    }
+
+    pub fn previous_env_field(&mut self, form: &mut EnvVarForm) {
+        form.current_field = if form.current_field == 0 { 1 } else { 0 };
     }
 
     /// Launch a shell with the box environment loaded
