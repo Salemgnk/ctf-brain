@@ -5,6 +5,7 @@ pub enum AppView {
     List,
     Details(i32),
     AddBox,
+    DeleteBox(i32),
 }
 
 #[derive(Debug, Clone)]
@@ -137,5 +138,34 @@ impl App {
         self.view = AppView::List;
         
         Ok(())
+    }
+
+    pub fn start_delete_box(&mut self) {
+        if let Some(id) = self.selected_box_id {
+            // Find actual box index to make sure it exists
+            if self.boxes.iter().any(|b| b.id == id) {
+                self.view = AppView::DeleteBox(id);
+            }
+        }
+    }
+
+    pub fn confirm_delete_box(&mut self, id: i32) {
+        self.boxes.retain(|b| b.id != id);
+        
+        // Reset selection if necessary
+        if self.boxes.is_empty() {
+            self.selected_box_id = None;
+        } else if let Some(current) = self.selected_box_id {
+            if current == id {
+                // If we deleted the selected box, select the first one
+                self.selected_box_id = self.boxes.first().map(|b| b.id);
+            }
+        }
+        
+        self.view = AppView::List;
+    }
+
+    pub fn cancel_delete(&mut self) {
+        self.view = AppView::List;
     }
 }

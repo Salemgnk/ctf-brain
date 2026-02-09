@@ -6,7 +6,7 @@ mod ui;
 use anyhow::Result;
 use app::{AddBoxForm, App, AppView};
 use crossterm::{
-    event::{self, Event, KeyCode},
+    event::{self, Event, KeyCode, KeyEventKind},
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
@@ -114,6 +114,12 @@ fn main() -> Result<()> {
             match &app.view {
                 AppView::List => ui::list::render(f, &app, area),
                 AppView::Details(id) => ui::detail::render(f, &app, area, *id),
+                AppView::DeleteBox(id) => {
+                    // Render list in background
+                    ui::list::render(f, &app, area);
+                    // Render delete modal on top
+                    ui::delete_box::render(f, &app, area, *id);
+                }
                 AppView::AddBox => {
                     // Render list in background
                     ui::list::render(f, &app, area);
@@ -128,89 +134,86 @@ fn main() -> Result<()> {
         // Handle input
         if event::poll(std::time::Duration::from_millis(100))? {
             if let Event::Key(key) = event::read()? {
-                match key.code {
-                    KeyCode::Char('q') => {
-                        if app.view != AppView::AddBox {
-                            app.quit()
-                        }
-                    }
-                    KeyCode::Char('a') => {
-                        if app.view == AppView::List {
-                            add_box_form = Some(app.start_add_box());
-                        }
-                    }
-                    KeyCode::Down | KeyCode::Char('j') => {
-                        if app.view == AppView::List {
-                            app.next();
-                        }
-                    }
-                    KeyCode::Up | KeyCode::Char('k') => {
-                        if app.view == AppView::List {
-                            app.previous();
-                        }
-                    }
-                    KeyCode::Enter => {
-                        if app.view == AppView::List {
-                            app.select_current();
-                        } else if app.view == AppView::AddBox {
-                            if let Some(form) = &add_box_form {
+                // Only handle key press events, not release
+                if key.kind != KeyEventKind::Press {
+                    continue;
+                }
+                // If in AddBox form, handle text input first
+                if app.view == AppView::AddBox {
+                    if let Some(form) = &mut add_box_form {
+                        match key.code {
+                            KeyCode::Char(c) => {
+                                match form.current_field {
+                                    0 => form.title.push(c),
+                                    1 => form.platform.push(c),
+                                    2 => form.ip.push(c),
+                                    3 => form.tags.push(c),
+                                    _ => {}
+                                }
+                            }
+                            KeyCode::Tab => app.next_field(form),
+                            KeyCode::BackTab => app.previous_field(form),
+                            KeyCode::Backspace => {
+                                match form.current_field {
+                                    0 => { form.title.pop(); }
+                                    1 => { form.platform.pop(); }
+                                    2 => { form.ip.pop(); }
+                                    3 => { form.tags.pop(); }
+                                    _ => {}
+                                }
+                            }
+                            KeyCode::Enter => {
                                 match app.submit_add_box(form) {
                                     Ok(_) => {
-                                        // Save immediately
                                         if let Err(e) = storage::save_boxes(&app.boxes) {
                                             eprintln!("Failed to save: {}", e);
                                         }
                                         add_box_form = None;
                                     }
                                     Err(e) => {
-                                        // TODO: Show error message
                                         eprintln!("Validation error: {}", e);
                                     }
                                 }
                             }
+                            KeyCode::Esc => {
+                                app.cancel_form();
+                                add_box_form = None;
+                            }
+                            _ => {}
                         }
                     }
-                    KeyCode::Tab => {
-                        if let Some(form) = &mut add_box_form {
-                            app.next_field(form);
+                } else {
+                    // Handle other views
+                    match key.code {
+                        KeyCode::Char('q') => app.quit(),
+                        KeyCode::Char('a') if app.view == AppView::List => {
+                            add_box_form = Some(app.start_add_box());
                         }
-                    }
-                    KeyCode::BackTab => {
-                        if let Some(form) = &mut add_box_form {
-                            app.previous_field(form);
-                        }
-                    }
-                    KeyCode::Char(c) => {
-                        if let Some(form) = &mut add_box_form {
-                            match form.current_field {
-                                0 => form.title.push(c),
-                                1 => form.platform.push(c),
-                                2 => form.ip.push(c),
-                                3 => form.tags.push(c),
-                                _ => {}
+                        KeyCode::Char('d') if app.view == AppView::List => app.start_delete_box(),
+                        KeyCode::Char('j') | KeyCode::Down if app.view == AppView::List => app.next(),
+                        KeyCode::Char('k') | KeyCode::Up if app.view == AppView::List => app.previous(),
+                        KeyCode::Enter if app.view == AppView::List => app.select_current(),
+                        KeyCode::Esc => {
+                            if let AppView::DeleteBox(_) = app.view {
+                                app.cancel_delete();
+                            } else {
+                                app.go_back();
                             }
                         }
-                    }
-                    KeyCode::Backspace => {
-                        if let Some(form) = &mut add_box_form {
-                            match form.current_field {
-                                0 => { form.title.pop(); }
-                                1 => { form.platform.pop(); }
-                                2 => { form.ip.pop(); }
-                                3 => { form.tags.pop(); }
-                                _ => {}
+                        KeyCode::Char(c) => {
+                            if let AppView::DeleteBox(id) = app.view {
+                                if c == 'y' || c == 'Y' {
+                                    app.confirm_delete_box(id);
+                                    if let Err(e) = storage::save_boxes(&app.boxes) {
+                                        eprintln!("Failed to save: {}", e);
+                                    }
+                                } else if c == 'n' || c == 'N' {
+                                    app.cancel_delete();
+                                }
                             }
                         }
+                        _ => {}
                     }
-                    KeyCode::Esc => {
-                        if app.view == AppView::AddBox {
-                            app.cancel_form();
-                            add_box_form = None;
-                        } else {
-                            app.go_back();
-                        }
-                    }
-                    _ => {}
                 }
             }
         }

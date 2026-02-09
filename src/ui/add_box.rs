@@ -10,7 +10,7 @@ use ratatui::{
 pub fn render(f: &mut Frame, _app: &App, form: &AddBoxForm, area: Rect) {
     // Calculate center position for modal (make responsive to small terminals)
     let modal_width = std::cmp::min(60, area.width.saturating_sub(4));
-    let modal_height = std::cmp::min(16, area.height.saturating_sub(2));
+    let modal_height = std::cmp::min(19, area.height.saturating_sub(2));
     let x = (area.width.saturating_sub(modal_width)) / 2;
     let y = (area.height.saturating_sub(modal_height)) / 2;
     
@@ -38,10 +38,10 @@ pub fn render(f: &mut Frame, _app: &App, form: &AddBoxForm, area: Rect) {
         .direction(Direction::Vertical)
         .margin(1)
         .constraints([
-            Constraint::Length(3),  // Title
-            Constraint::Length(3),  // Platform
-            Constraint::Length(3),  // IP
-            Constraint::Length(3),  // Tags
+            Constraint::Length(4),  // Title
+            Constraint::Length(4),  // Platform
+            Constraint::Length(4),  // IP
+            Constraint::Length(4),  // Tags
             Constraint::Length(1),  // Help text
         ])
         .split(inner);
@@ -124,8 +124,9 @@ pub fn render(f: &mut Frame, _app: &App, form: &AddBoxForm, area: Rect) {
     };
     
     // Position cursor at end of text
-    // +1 for border
-    // +1 because text is on second line (first is label)
+    // +1 for border X
+    // +1 because text is on second line of the block (first is label)
+    // For Y: active_chunk.y gives the top of the current block
     f.set_cursor_position((
         active_chunk.x + 1 + text.chars().count() as u16,
         active_chunk.y + 2
