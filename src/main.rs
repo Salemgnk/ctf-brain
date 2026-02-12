@@ -10,7 +10,11 @@ use crossterm::{
     execute,
     terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
 };
-use ratatui::{Terminal, backend::CrosstermBackend};
+use ratatui::{
+    Terminal, 
+    backend::CrosstermBackend,
+    layout::{Constraint, Direction, Layout},
+};
 use std::collections::HashMap;
 use std::io;
 
@@ -120,27 +124,41 @@ fn main() -> Result<()> {
         // Render
         terminal.draw(|f| {
             let area = f.area();
+            
+            // Create layout with footer
+            let main_chunks = Layout::default()
+                .direction(Direction::Vertical)
+                .constraints([
+                    Constraint::Min(0),      // Main content
+                    Constraint::Length(2),   // Footer
+                ])
+                .split(area);
+            
+            // Render main view
             match &app.view {
-                AppView::List => ui::list::render(f, &app, area),
-                AppView::Details(id) => ui::detail::render(f, &app, area, *id),
+                AppView::List => ui::list::render(f, &app, main_chunks[0]),
+                AppView::Details(id) => ui::detail::render(f, &app, main_chunks[0], *id),
                 AppView::DeleteBox(id) => {
                     // Render list in background
-                    ui::list::render(f, &app, area);
+                    ui::list::render(f, &app, main_chunks[0]);
                     // Render delete modal on top
-                    ui::delete_box::render(f, &app, area, *id);
+                    ui::delete_box::render(f, &app, main_chunks[0], *id);
                 }
                 AppView::AddBox => {
                     // Render list in background
-                    ui::list::render(f, &app, area);
+                    ui::list::render(f, &app, main_chunks[0]);
                     // Render form modal on top
                     if let Some(form) = &add_box_form {
-                        ui::add_box::render(f, &app, form, area);
+                        ui::add_box::render(f, &app, form, main_chunks[0]);
                     }
                 }
                 AppView::EditEnvVars(id) => {
-                    ui::edit_env_vars::render(f, &app, env_var_form.as_ref(), area, *id);
+                    ui::edit_env_vars::render(f, &app, env_var_form.as_ref(), main_chunks[0], *id);
                 }
             }
+            
+            // Render footer with shortcuts
+            ui::footer::render_footer(f, &app.view, main_chunks[1]);
         })?;
 
         // Handle input
