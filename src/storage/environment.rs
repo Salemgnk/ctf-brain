@@ -75,7 +75,11 @@ if [ -f ~/.ctf-brain/shell-hook.sh ]; then
 fi
 
 # ========== Custom Prompt ==========
-PS1="\[\e[32m\][{}]\[\e[0m\] \u@\h:\w\$ "
+if [ -n "$ZSH_VERSION" ]; then
+    PROMPT="%F{{green}}[🧠 {}]%f %n@%m:%~%# "
+else
+    PS1="\[\e[32m\][🧠 {}]\[\e[0m\] \u@\h:\w\$ "
+fi
 
 # ========== Quick Aliases ==========
 alias ip='echo $CTF_IP'
@@ -101,6 +105,10 @@ echo "  nc-listen  → rlwrap nc -lvnp 4444"
 echo ""
 echo "💾 Toutes les commandes sont loggées automatiquement"
 echo ""
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo "⚠️  Tapez 'exit' pour revenir à CTF Brain"
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo ""
 "#,
         ctf_box.title,
         ctf_box.title,
@@ -108,6 +116,7 @@ echo ""
         ctf_box.id,
         ctf_box.platform,
         custom_vars,
+        ctf_box.title,
         ctf_box.title,
         ctf_box.title,
         ctf_box.ip_address,
