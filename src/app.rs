@@ -266,9 +266,28 @@ impl App {
         println!("╚══════════════════════════════════════╝\x1b[0m\n");
 
         let status = if shell.contains("zsh") {
+            // For zsh: create a custom .zshrc in the box directory that
+            // sources the user's real .zshrc first, then our env file.
+            // This ensures our PROMPT overrides the user's default.
+            let boxes_dir = dirs::home_dir()
+                .ok_or("No home directory")?
+                .join(".ctf-brain/boxes");
+            let zdotdir = boxes_dir.join(format!("zsh-{}", box_id));
+            std::fs::create_dir_all(&zdotdir)
+                .map_err(|e| format!("Failed to create zdotdir: {}", e))?;
+
+            let custom_zshrc = format!(
+                "# Source user's original .zshrc\n\
+                 [ -f \"$HOME/.zshrc\" ] && source \"$HOME/.zshrc\"\n\
+                 # Then apply CTF Brain environment (overrides prompt)\n\
+                 source {}\n",
+                env_file.display()
+            );
+            std::fs::write(zdotdir.join(".zshrc"), custom_zshrc)
+                .map_err(|e| format!("Failed to write custom .zshrc: {}", e))?;
+
             Command::new(&shell)
-                .arg("-c")
-                .arg(format!("source {} && exec {}", env_file.display(), shell))
+                .env("ZDOTDIR", &zdotdir)
                 .status()
                 .map_err(|e| format!("Failed to spawn zsh: {}", e))?
         } else {

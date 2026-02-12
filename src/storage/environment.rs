@@ -47,7 +47,7 @@ pub fn create_box_environment(ctf_box: &CtfBox) -> Result<()> {
                 } else {
                     v.clone()
                 };
-                format!("  {} = {}", k, display_val)
+                format!("echo \"  {} = {}\"", k, display_val)
             })
             .collect::<Vec<_>>()
             .join("\n");
