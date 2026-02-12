@@ -11,6 +11,7 @@ pub enum AppView {
     AddBox,
     DeleteBox(i32),
     EditEnvVars(i32),
+    EditNotes(i32),
 }
 
 #[derive(Debug, Clone)]
@@ -29,11 +30,19 @@ pub struct EnvVarForm {
     pub current_field: usize,
 }
 
+#[derive(Debug, Clone)]
+pub struct NoteForm {
+    pub content: String,
+    pub category_index: usize,
+}
+
 pub struct App {
     pub view: AppView,
     pub boxes: Vec<CtfBox>,
     pub selected_box_id: Option<i32>,
     pub should_quit: bool,
+    pub selected_env_var: Option<usize>,
+    pub selected_note: Option<usize>,
 }
 
 impl App {
@@ -44,6 +53,8 @@ impl App {
             boxes,
             selected_box_id,
             should_quit: false,
+            selected_env_var: None,
+            selected_note: None,
         }
     }
 
@@ -240,6 +251,155 @@ impl App {
         form.current_field = if form.current_field == 0 { 1 } else { 0 };
     }
 
+    // ========== Env Var Navigation ==========
+
+    pub fn next_env_var(&mut self, box_id: i32) {
+        if let Some(ctf_box) = self.boxes.iter().find(|b| b.id == box_id) {
+            let count = ctf_box.env_vars.len();
+            if count == 0 {
+                return;
+            }
+            self.selected_env_var = Some(match self.selected_env_var {
+                Some(i) => (i + 1) % count,
+                None => 0,
+            });
+        }
+    }
+
+    pub fn previous_env_var(&mut self, box_id: i32) {
+        if let Some(ctf_box) = self.boxes.iter().find(|b| b.id == box_id) {
+            let count = ctf_box.env_vars.len();
+            if count == 0 {
+                return;
+            }
+            self.selected_env_var = Some(match self.selected_env_var {
+                Some(0) | None => count.saturating_sub(1),
+                Some(i) => i - 1,
+            });
+        }
+    }
+
+    pub fn delete_selected_env_var(&mut self, box_id: i32) -> Result<(), String> {
+        let selected = self.selected_env_var.ok_or("No variable selected")?;
+        let ctf_box = self
+            .boxes
+            .iter_mut()
+            .find(|b| b.id == box_id)
+            .ok_or("Box not found")?;
+        let keys: Vec<String> = ctf_box.env_vars.keys().cloned().collect();
+        if selected >= keys.len() {
+            return Err("Invalid selection".to_string());
+        }
+        ctf_box.env_vars.remove(&keys[selected]);
+        ctf_box.updated_date = chrono::Utc::now();
+        // Adjust selection
+        let new_count = ctf_box.env_vars.len();
+        if new_count == 0 {
+            self.selected_env_var = None;
+        } else if selected >= new_count {
+            self.selected_env_var = Some(new_count - 1);
+        }
+        Ok(())
+    }
+
+    // ========== Notes Management ==========
+
+    pub fn start_edit_notes(&mut self, box_id: i32) {
+        if self.boxes.iter().any(|b| b.id == box_id) {
+            self.view = AppView::EditNotes(box_id);
+            self.selected_note = None;
+        }
+    }
+
+    pub fn add_note(
+        &mut self,
+        box_id: i32,
+        category_index: usize,
+        content: String,
+    ) -> Result<(), String> {
+        if content.trim().is_empty() {
+            return Err("Content cannot be empty".to_string());
+        }
+
+        let categories = Self::note_categories();
+        if category_index >= categories.len() {
+            return Err("Invalid category".to_string());
+        }
+
+        if let Some(ctf_box) = self.boxes.iter_mut().find(|b| b.id == box_id) {
+            ctf_box.notes.push(crate::models::Note {
+                category: categories[category_index].clone(),
+                content: content.trim().to_string(),
+                created_date: chrono::Utc::now(),
+            });
+            ctf_box.updated_date = chrono::Utc::now();
+            Ok(())
+        } else {
+            Err("Box not found".to_string())
+        }
+    }
+
+    pub fn delete_selected_note(&mut self, box_id: i32) -> Result<(), String> {
+        let selected = self.selected_note.ok_or("No note selected")?;
+        let ctf_box = self
+            .boxes
+            .iter_mut()
+            .find(|b| b.id == box_id)
+            .ok_or("Box not found")?;
+        if selected >= ctf_box.notes.len() {
+            return Err("Invalid selection".to_string());
+        }
+        ctf_box.notes.remove(selected);
+        ctf_box.updated_date = chrono::Utc::now();
+        let new_count = ctf_box.notes.len();
+        if new_count == 0 {
+            self.selected_note = None;
+        } else if selected >= new_count {
+            self.selected_note = Some(new_count - 1);
+        }
+        Ok(())
+    }
+
+    pub fn next_note(&mut self, box_id: i32) {
+        if let Some(ctf_box) = self.boxes.iter().find(|b| b.id == box_id) {
+            let count = ctf_box.notes.len();
+            if count == 0 {
+                return;
+            }
+            self.selected_note = Some(match self.selected_note {
+                Some(i) => (i + 1) % count,
+                None => 0,
+            });
+        }
+    }
+
+    pub fn previous_note(&mut self, box_id: i32) {
+        if let Some(ctf_box) = self.boxes.iter().find(|b| b.id == box_id) {
+            let count = ctf_box.notes.len();
+            if count == 0 {
+                return;
+            }
+            self.selected_note = Some(match self.selected_note {
+                Some(0) | None => count.saturating_sub(1),
+                Some(i) => i - 1,
+            });
+        }
+    }
+
+    pub fn note_categories() -> Vec<crate::models::NoteCategory> {
+        vec![
+            crate::models::NoteCategory::Recon,
+            crate::models::NoteCategory::Foothold,
+            crate::models::NoteCategory::Privesc,
+            crate::models::NoteCategory::Web,
+            crate::models::NoteCategory::Pwn,
+            crate::models::NoteCategory::Crypto,
+            crate::models::NoteCategory::Reversing,
+            crate::models::NoteCategory::Stego,
+            crate::models::NoteCategory::Misc,
+        ]
+    }
+
     /// Launch a shell with the box environment loaded
     /// This function replaces the current process with bash
     /// Launch a shell with the box environment loaded
@@ -266,9 +426,6 @@ impl App {
         println!("╚══════════════════════════════════════╝\x1b[0m\n");
 
         let status = if shell.contains("zsh") {
-            // For zsh: create a custom .zshrc in the box directory that
-            // sources the user's real .zshrc first, then our env file.
-            // This ensures our PROMPT overrides the user's default.
             let boxes_dir = dirs::home_dir()
                 .ok_or("No home directory")?
                 .join(".ctf-brain/boxes");

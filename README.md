@@ -32,6 +32,7 @@ cargo run
 ```
 
 Au premier lancement, ctf-brain :
+
 - Crée `~/.ctf-brain/`
 - Installe le hook de logging
 - Affiche des données de sample
@@ -69,30 +70,33 @@ $ ctf-brain
 ### Contrôles clavier
 
 #### Vue Liste
-| Touche | Action |
-|--------|--------|
-| `j` / `↓` | Descendre dans la liste |
-| `k` / `↑` | Monter dans la liste |
-| `Enter` | Voir les détails |
-| `a` | Ajouter une box |
-| `d` | Supprimer la box sélectionnée |
-| `l` | Lancer shell avec environnement |
-| `q` | Quitter |
+
+| Touche         | Action                          |
+| -------------- | ------------------------------- |
+| `j` / `↓` | Descendre dans la liste         |
+| `k` / `↑` | Monter dans la liste            |
+| `Enter`      | Voir les détails               |
+| `a`          | Ajouter une box                 |
+| `d`          | Supprimer la box sélectionnée |
+| `l`          | Lancer shell avec environnement |
+| `q`          | Quitter                         |
 
 #### Vue Détails
-| Touche | Action |
-|--------|--------|
-| `e` | Éditer les variables d'environnement |
-| `l` | Lancer shell |
-| `Esc` | Retour à la liste |
+
+| Touche  | Action                                |
+| ------- | ------------------------------------- |
+| `e`   | Éditer les variables d'environnement |
+| `l`   | Lancer shell                          |
+| `Esc` | Retour à la liste                    |
 
 #### Édition Variables
-| Touche | Action |
-|--------|--------|
-| `a` | Ajouter une variable |
-| `Tab` | Champ suivant |
-| `Enter` | Valider |
-| `Esc` | Retour |
+
+| Touche    | Action               |
+| --------- | -------------------- |
+| `a`     | Ajouter une variable |
+| `Tab`   | Champ suivant        |
+| `Enter` | Valider              |
+| `Esc`   | Retour               |
 
 ## 🏗️ Architecture
 
@@ -130,6 +134,7 @@ nc-listen  # rlwrap nc -lvnp 4444
 ## 🐛 Troubleshooting
 
 ### Le shell ne se lance pas
+
 ```bash
 # Vérifier que bash est installé
 which bash
@@ -139,6 +144,7 @@ ls -la ~/.ctf-brain/
 ```
 
 ### Les commandes ne sont pas loggées
+
 ```bash
 # Vérifier que le hook est installé
 cat ~/.ctf-brain/shell-hook.sh
@@ -148,6 +154,7 @@ ls -la ~/.ctf-brain/logs/
 ```
 
 ### Les variables ne sont pas chargées
+
 ```bash
 # Vérifier le fichier .env
 cat ~/.ctf-brain/boxes/box-1.env
@@ -160,24 +167,28 @@ echo $CTF_IP
 ## 📝 Roadmap
 
 **Phase 1 - MVP Interface** ✅
-- [x] Vue liste des boxes
-- [x] Vue détail avec notes et actions
-- [x] Navigation clavier
-- [x] Persistence JSON
+
+- [X] Vue liste des boxes
+- [X] Vue détail avec notes et actions
+- [X] Navigation clavier
+- [X] Persistence JSON
 
 **Phase 2 - Environment Management** ✅
-- [x] Variables d'environnement custom
-- [x] Lancement de shell automatique
-- [x] Logging transparent des commandes
-- [x] Génération de fichiers .env
+
+- [X] Variables d'environnement custom
+- [X] Lancement de shell automatique
+- [X] Logging transparent des commandes
+- [X] Génération de fichiers .env
 
 **Phase 3 - Enrichissement** 📋
+
 - [ ] Ajout/édition de notes depuis la TUI
 - [ ] Catégorisation automatique des commandes
 - [ ] Détection de succès/échec
 - [ ] Timeline visuelle
 
 **Phase 4 - Export** 📋
+
 - [ ] Export writeup Markdown
 - [ ] Export PDF
 - [ ] Templates personnalisables
@@ -189,4 +200,3 @@ MIT
 ## 👨‍💻 Auteur
 
 **Salem GNK** - Étudiant en expertise informatique
-
