@@ -9,6 +9,7 @@ use crossterm::{
     event::{self, Event, KeyCode, KeyEventKind},
     execute,
     terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
+    cursor::Show,
 };
 use ratatui::{
     Terminal, 
@@ -300,30 +301,32 @@ fn main() -> Result<()> {
                                 AppView::List => {
                                     if let Some(idx) = app.selected_box_id {
                                         if let Some(ctf_box) = app.boxes.get(idx as usize) {
-                                            // Disable raw mode before exec
                                             disable_raw_mode()?;
                                             execute!(terminal.backend_mut(), LeaveAlternateScreen)?;
-
+                                            
                                             if let Err(e) = app.launch_box_shell(ctf_box.id) {
                                                 eprintln!("Failed to launch shell: {}", e);
-                                                // Re-enable raw mode if exec failed
-                                                enable_raw_mode()?;
-                                                execute!(terminal.backend_mut(), EnterAlternateScreen)?;
                                             }
+                                            
+                                            enable_raw_mode()?;
+                                            execute!(terminal.backend_mut(), EnterAlternateScreen)?;
+                                            execute!(terminal.backend_mut(), Show)?;
+                                            terminal.clear()?;
                                         }
                                     }
                                 }
                                 AppView::Details(id) => {
-                                    // Disable raw mode before exec
                                     disable_raw_mode()?;
                                     execute!(terminal.backend_mut(), LeaveAlternateScreen)?;
-
+                                    
                                     if let Err(e) = app.launch_box_shell(*id) {
                                         eprintln!("Failed to launch shell: {}", e);
-                                        // Re-enable raw mode if exec failed
-                                        enable_raw_mode()?;
-                                        execute!(terminal.backend_mut(), EnterAlternateScreen)?;
                                     }
+                                    
+                                    enable_raw_mode()?;
+                                    execute!(terminal.backend_mut(), EnterAlternateScreen)?;
+                                    execute!(terminal.backend_mut(), Show)?;
+                                    terminal.clear()?;
                                 }
                                 _ => {}
                             }
