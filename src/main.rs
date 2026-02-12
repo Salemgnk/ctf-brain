@@ -6,13 +6,13 @@ mod ui;
 use anyhow::Result;
 use app::{AddBoxForm, App, AppView, EnvVarForm};
 use crossterm::{
+    cursor::Show,
     event::{self, Event, KeyCode, KeyEventKind},
     execute,
     terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
-    cursor::Show,
 };
 use ratatui::{
-    Terminal, 
+    Terminal,
     backend::CrosstermBackend,
     layout::{Constraint, Direction, Layout},
 };
@@ -125,16 +125,16 @@ fn main() -> Result<()> {
         // Render
         terminal.draw(|f| {
             let area = f.area();
-            
+
             // Create layout with footer
             let main_chunks = Layout::default()
                 .direction(Direction::Vertical)
                 .constraints([
-                    Constraint::Min(0),      // Main content
-                    Constraint::Length(2),   // Footer
+                    Constraint::Min(0),    // Main content
+                    Constraint::Length(2), // Footer
                 ])
                 .split(area);
-            
+
             // Render main view
             match &app.view {
                 AppView::List => ui::list::render(f, &app, main_chunks[0]),
@@ -157,7 +157,7 @@ fn main() -> Result<()> {
                     ui::edit_env_vars::render(f, &app, env_var_form.as_ref(), main_chunks[0], *id);
                 }
             }
-            
+
             // Render footer with shortcuts
             ui::footer::render_footer(f, &app.view, main_chunks[1]);
         })?;
@@ -194,7 +194,8 @@ fn main() -> Result<()> {
                                 app.previous_env_field(form);
                             }
                             KeyCode::Enter => {
-                                match app.add_env_var(box_id, form.key.clone(), form.value.clone()) {
+                                match app.add_env_var(box_id, form.key.clone(), form.value.clone())
+                                {
                                     Ok(_) => {
                                         if let Err(e) = storage::save_boxes(&app.boxes) {
                                             eprintln!("Failed to save: {}", e);
@@ -296,41 +297,41 @@ fn main() -> Result<()> {
                             }
                         }
                         // Touche 'l' pour lancer le shell
-                        KeyCode::Char('l') => {
-                            match &app.view {
-                                AppView::List => {
-                                    if let Some(idx) = app.selected_box_id {
-                                        if let Some(ctf_box) = app.boxes.get(idx as usize) {
-                                            disable_raw_mode()?;
-                                            execute!(terminal.backend_mut(), LeaveAlternateScreen)?;
-                                            
-                                            if let Err(e) = app.launch_box_shell(ctf_box.id) {
-                                                eprintln!("Failed to launch shell: {}", e);
-                                            }
-                                            
-                                            enable_raw_mode()?;
-                                            execute!(terminal.backend_mut(), EnterAlternateScreen)?;
-                                            execute!(terminal.backend_mut(), Show)?;
-                                            terminal.clear()?;
+                        KeyCode::Char('l') => match &app.view {
+                            AppView::List => {
+                                if let Some(idx) = app.selected_box_id {
+                                    if let Some(ctf_box) = app.boxes.get(idx as usize) {
+                                        disable_raw_mode()?;
+                                        execute!(
+                                            terminal.backend_mut(),
+                                            LeaveAlternateScreen,
+                                            Show
+                                        )?;
+
+                                        if let Err(e) = app.launch_box_shell(ctf_box.id) {
+                                            eprintln!("Failed to launch shell: {}", e);
                                         }
+
+                                        enable_raw_mode()?;
+                                        execute!(terminal.backend_mut(), EnterAlternateScreen)?;
+                                        terminal.clear()?;
                                     }
                                 }
-                                AppView::Details(id) => {
-                                    disable_raw_mode()?;
-                                    execute!(terminal.backend_mut(), LeaveAlternateScreen)?;
-                                    
-                                    if let Err(e) = app.launch_box_shell(*id) {
-                                        eprintln!("Failed to launch shell: {}", e);
-                                    }
-                                    
-                                    enable_raw_mode()?;
-                                    execute!(terminal.backend_mut(), EnterAlternateScreen)?;
-                                    execute!(terminal.backend_mut(), Show)?;
-                                    terminal.clear()?;
-                                }
-                                _ => {}
                             }
-                        }
+                            AppView::Details(id) => {
+                                disable_raw_mode()?;
+                                execute!(terminal.backend_mut(), LeaveAlternateScreen, Show)?;
+
+                                if let Err(e) = app.launch_box_shell(*id) {
+                                    eprintln!("Failed to launch shell: {}", e);
+                                }
+
+                                enable_raw_mode()?;
+                                execute!(terminal.backend_mut(), EnterAlternateScreen)?;
+                                terminal.clear()?;
+                            }
+                            _ => {}
+                        },
                         KeyCode::Esc => {
                             if let AppView::DeleteBox(_) = app.view {
                                 app.cancel_delete();

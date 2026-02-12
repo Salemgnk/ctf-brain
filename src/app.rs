@@ -244,19 +244,27 @@ impl App {
     /// This function replaces the current process with bash
     /// Launch a shell with the box environment loaded
     pub fn launch_box_shell(&self, box_id: i32) -> Result<(), String> {
-        let ctf_box = self.boxes.iter()
+        let ctf_box = self
+            .boxes
+            .iter()
             .find(|b| b.id == box_id)
             .ok_or("Box not found")?;
-        
+
         crate::storage::create_box_environment(ctf_box)
             .map_err(|e| format!("Failed to create environment: {}", e))?;
-        
+
         let env_file = dirs::home_dir()
             .ok_or("No home directory")?
             .join(format!(".ctf-brain/boxes/box-{}.env", box_id));
-        
+
         let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/bash".to_string());
-        
+
+        println!("\n\x1b[32m╔══════════════════════════════════════╗");
+        println!("║  🧠 CTF Brain Shell - {}", ctf_box.title);
+        println!("║  📡 IP: {}", ctf_box.ip_address);
+        println!("║  Tapez 'exit' pour revenir à CTF Brain");
+        println!("╚══════════════════════════════════════╝\x1b[0m\n");
+
         let status = if shell.contains("zsh") {
             Command::new(&shell)
                 .arg("-c")
@@ -270,11 +278,11 @@ impl App {
                 .status()
                 .map_err(|e| format!("Failed to spawn bash: {}", e))?
         };
-        
+
         if !status.success() {
             return Err(format!("Shell exited with status: {}", status));
         }
-        
+
         Ok(())
     }
 }
