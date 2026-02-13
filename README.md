@@ -23,18 +23,21 @@ cd ctf-brain
 cargo build --release
 ```
 
+
 ## 📖 Utilisation
 
 ### Lancement
 
 ```bash
-cargo run
+cargo run --release
+# ou
+./target/release/ctf-brain
 ```
 
 Au premier lancement, ctf-brain :
 
 - Crée `~/.ctf-brain/`
-- Installe le hook de logging
+- Installe le hook de logging (pour capturer les commandes)
 - Affiche des données de sample
 
 ### Workflow typique
@@ -56,47 +59,53 @@ $ ctf-brain
 #    API_KEY = sk-proj-...
 
 # 5. Lancer le shell (touche 'l')
-[Lame] $ n                    # Alias: nmap -sV $CTF_IP
-[Lame] $ echo $JWT_TOKEN      # Variable disponible
+#    Un shell s'ouvre avec toutes les variables et aliases utiles
 
-# 6. Split ton terminal manuellement
+# 6. Pour capturer une commande et son output dans le write-up :
+[Lame] $ ctf nmap -sV $CTF_IP      # (ou cn)
+[Lame] $ ctf gobuster ...          # (ou cg)
+[Lame] $ echo $JWT_TOKEN           # Variable dispo
 
-# 7. Dans le nouveau pane:
-$ ctf-brain
-# Sélectionne "Lame" → 'l'
-[Lame] $ g /admin             # Alias: gobuster
+# 7. Tapez 'exit' pour revenir à l'app
+#    Les commandes sont importées automatiquement dans la box
+
+# 8. Générer le write-up Markdown (touche 'w' dans la vue Détails)
+#    Le chemin du fichier généré s'affiche
 ```
 
-### Contrôles clavier
+
+### Contrôles clavier principaux
 
 #### Vue Liste
-
 | Touche         | Action                          |
 | -------------- | ------------------------------- |
-| `j` / `↓` | Descendre dans la liste         |
-| `k` / `↑` | Monter dans la liste            |
-| `Enter`      | Voir les détails               |
-| `a`          | Ajouter une box                 |
-| `d`          | Supprimer la box sélectionnée |
-| `l`          | Lancer shell avec environnement |
-| `q`          | Quitter                         |
+| `j` / `↓`      | Descendre dans la liste         |
+| `k` / `↑`      | Monter dans la liste            |
+| `Enter`        | Voir les détails               |
+| `a`            | Ajouter une box                 |
+| `d`            | Supprimer la box sélectionnée   |
+| `l`            | Lancer shell avec environnement |
+| `q`            | Quitter                         |
 
 #### Vue Détails
-
 | Touche  | Action                                |
 | ------- | ------------------------------------- |
-| `e`   | Éditer les variables d'environnement |
-| `l`   | Lancer shell                          |
-| `Esc` | Retour à la liste                    |
+| `e`     | Éditer les variables d'environnement   |
+| `n`     | Éditer les notes                      |
+| `w`     | Générer le write-up Markdown          |
+| `l`     | Lancer shell                          |
+| `Esc`   | Retour à la liste                     |
 
-#### Édition Variables
+#### Shell CTF (après 'l')
+| Commande         | Action                                    |
+|------------------|-------------------------------------------|
+| `ctf <cmd>`      | Exécute et log la commande + output       |
+| `cn`             | Alias: ctf nmap -sV $CTF_IP               |
+| `cna`            | Alias: ctf nmap -sC -sV -A $CTF_IP        |
+| `cg`             | Alias: ctf gobuster ...                   |
+| `cff`            | Alias: ctf ffuf ...                       |
 
-| Touche    | Action               |
-| --------- | -------------------- |
-| `a`     | Ajouter une variable |
-| `Tab`   | Champ suivant        |
-| `Enter` | Valider              |
-| `Esc`   | Retour               |
+> **Astuce :** Utilisez toujours `ctf` pour les commandes importantes à documenter dans le write-up !
 
 ## 🏗️ Architecture
 
@@ -111,17 +120,23 @@ $ ctf-brain
 └── shell-hook.sh          # Hook de logging
 ```
 
-## 🎯 Aliases disponibles dans le shell
+g /path    # gobuster dir -u http://$CTF_IP -w wordlist
 
-Lorsque tu lances un shell avec `l`, tu as accès à :
+## 🎯 Aliases et wrapper dans le shell
+
+Quand tu lances un shell avec `l`, tu as accès à :
 
 ```bash
-ip         # Affiche $CTF_IP
-n          # nmap -sV $CTF_IP
-na         # nmap -sC -sV -A $CTF_IP
-g /path    # gobuster dir -u http://$CTF_IP -w wordlist
-nc-listen  # rlwrap nc -lvnp 4444
+ctf <commande>   # Exécute et log la commande + output (pour le write-up)
+cn               # Alias: ctf nmap -sV $CTF_IP
+cna              # Alias: ctf nmap -sC -sV -A $CTF_IP
+cg               # Alias: ctf gobuster ...
+cff              # Alias: ctf ffuf ...
+ip               # Affiche $CTF_IP
+nc-listen        # rlwrap nc -lvnp 4444
 ```
+
+> **Seules les commandes passées via `ctf` sont loggées avec leur output pour le write-up !**
 
 ## 🛠️ Stack technique
 
@@ -164,34 +179,13 @@ source ~/.ctf-brain/boxes/box-1.env
 echo $CTF_IP
 ```
 
-## 📝 Roadmap
 
-**Phase 1 - MVP Interface** ✅
+## 📝 Fonctionnalités avancées
 
-- [X] Vue liste des boxes
-- [X] Vue détail avec notes et actions
-- [X] Navigation clavier
-- [X] Persistence JSON
-
-**Phase 2 - Environment Management** ✅
-
-- [X] Variables d'environnement custom
-- [X] Lancement de shell automatique
-- [X] Logging transparent des commandes
-- [X] Génération de fichiers .env
-
-**Phase 3 - Enrichissement** 📋
-
-- [ ] Ajout/édition de notes depuis la TUI
-- [ ] Catégorisation automatique des commandes
-- [ ] Détection de succès/échec
-- [ ] Timeline visuelle
-
-**Phase 4 - Export** 📋
-
-- [ ] Export writeup Markdown
-- [ ] Export PDF
-- [ ] Templates personnalisables
+- **Import automatique des commandes** : Après chaque session shell, les commandes passées via `ctf` sont importées dans la box correspondante.
+- **Génération de write-up** : Touche `w` dans la vue Détails → exporte un markdown structuré avec toutes les commandes, outputs et notes.
+- **Aliases rapides** : Pour les outils classiques (nmap, gobuster, ffuf, etc).
+- **Variables d'environnement** : Disponibles dans le shell pour chaque box.
 
 ## 📄 License
 
