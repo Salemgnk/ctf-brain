@@ -14,5 +14,7 @@ pub struct Action {
     pub command: String,
     pub result: ActionResult,
     pub note: Option<String>,
+    #[serde(default)]
+    pub output: Option<String>,
 }
 

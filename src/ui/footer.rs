@@ -20,9 +20,10 @@ pub fn render_footer(f: &mut Frame, view: &AppView, area: Rect) {
         ],
         AppView::Details(_) => vec![
             ("e", "Edit Vars", Color::Yellow),
-            ("l", "Launch Shell", Color::Magenta),
+            ("n", "Edit Notes", Color::Yellow),
+            ("w", "Write-up", Color::Green),
+            ("l", "Shell", Color::Magenta),
             ("Esc", "Back", Color::Cyan),
-            ("q", "Quit", Color::Red),
         ],
         AppView::AddBox => vec![
             ("Tab", "Next Field", Color::Green),

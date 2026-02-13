@@ -96,16 +96,22 @@ echo "📡 IP: {}"
 echo "🏷️  Platform: {}"
 echo "🔖 Tags: {}"
 {}
-echo "Commandes rapides:"
-echo "  ip         → Affiche l'IP"
-echo "  n          → nmap -sV \$CTF_IP"
-echo "  na         → nmap complet (sC, sV, A)"
-echo "  g /path    → gobuster sur \$CTF_IP"
-echo "  nc-listen  → rlwrap nc -lvnp 4444"
 echo ""
-echo "💾 Toutes les commandes sont loggées automatiquement"
+echo "📝 Pour capturer une commande avec son output:"
+echo "   \033[33mctf <commande>\033[0m  →  Ex: ctf nmap -sV \$CTF_IP"
+echo ""
+echo "⚡ Raccourcis (avec capture):"
+echo "   cn   → ctf nmap -sV \$CTF_IP"
+echo "   cna  → ctf nmap -sC -sV -A \$CTF_IP"
+echo "   cg   → ctf gobuster dir ..."
+echo "   cff  → ctf ffuf ..."
+echo ""
+echo "🔧 Autres aliases:"
+echo "   ip        → Affiche \$CTF_IP"
+echo "   nc-listen → rlwrap nc -lvnp 4444"
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo "💾 Les commandes 'ctf' sont loggées pour le write-up"
 echo "⚠️  Tapez 'exit' pour revenir à CTF Brain"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
@@ -135,67 +141,112 @@ pub fn ensure_shell_hook_installed() -> Result<()> {
     let base_dir = get_base_dir()?;
     let hook_path = base_dir.join("shell-hook.sh");
 
-    // Don't overwrite if it already exists
-    if hook_path.exists() {
-        return Ok(());
-    }
-
     // Create logs directory
     let logs_dir = base_dir.join("logs");
     fs::create_dir_all(&logs_dir).context("Failed to create logs directory")?;
 
+    // Always update the hook to get latest features
     let hook_content = r#"#!/bin/bash
 # CTF Brain - Shell Hook for Command Logging
-# This script captures all commands and logs them to JSONL files
+# This script captures commands and their outputs
 
-_ctf_log_command() {
-    # Ignore empty commands
-    [ -z "$1" ] && return
-    
-    # Ignore internal commands to reduce noise
-    case "$1" in
-        cd|cd\ *|ls|ls\ *|pwd|clear|exit|history) return ;;
-    esac
+# ========== CTF Command Wrapper ==========
+# Usage: ctf <command>
+# This captures the command, its output, and exit code
+ctf() {
+    if [ -z "$1" ]; then
+        echo "Usage: ctf <command>"
+        echo "Example: ctf nmap -sV \$CTF_IP"
+        return 1
+    fi
     
     # Ensure logs directory exists
     mkdir -p "$HOME/.ctf-brain/logs"
     
-    # Log in JSONL format
     local timestamp=$(date -Iseconds)
     local log_file="$HOME/.ctf-brain/logs/box-${CTF_ID}.jsonl"
+    local tmp_output=$(mktemp)
     
-    # Escape double quotes in command
-    local cmd_escaped=$(echo "$1" | sed 's/"/\\"/g')
+    # Run the command and capture output
+    echo -e "\033[36m[CTF] Running: $*\033[0m"
+    echo ""
     
-    echo "{\"time\":\"$timestamp\",\"box_id\":$CTF_ID,\"cmd\":\"$cmd_escaped\"}" >> "$log_file"
+    # Execute and capture both stdout and stderr, while also displaying
+    "$@" 2>&1 | tee "$tmp_output"
+    local exit_code=${PIPESTATUS[0]}
+    
+    # Determine result
+    local result="unknown"
+    if [ $exit_code -eq 0 ]; then
+        result="success"
+    else
+        result="fail"
+    fi
+    
+    # Read output and escape for JSON
+    local output=$(cat "$tmp_output" | head -c 50000 | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))' 2>/dev/null || echo '""')
+    
+    # Escape the command for JSON
+    local cmd_escaped=$(echo "$*" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read().strip()))' 2>/dev/null || echo "\"$*\"")
+    
+    # Log in JSONL format with output
+    echo "{\"time\":\"$timestamp\",\"box_id\":$CTF_ID,\"cmd\":$cmd_escaped,\"result\":\"$result\",\"exit_code\":$exit_code,\"output\":$output}" >> "$log_file"
+    
+    # Cleanup
+    rm -f "$tmp_output"
+    
+    echo ""
+    if [ $exit_code -eq 0 ]; then
+        echo -e "\033[32m[CTF] ✓ Command logged (success)\033[0m"
+    else
+        echo -e "\033[31m[CTF] ✗ Command logged (exit code: $exit_code)\033[0m"
+    fi
+    
+    return $exit_code
 }
 
-# Hook for Bash
-if [ -n "$BASH_VERSION" ]; then
-    # Save the previous command
-    trap '_previous_command=$_this_command; _this_command=$BASH_COMMAND' DEBUG
-    
-    # Log after each prompt
-    _ctf_prompt_command() {
-        local exit_code=$?
-        if [ -n "$_previous_command" ]; then
-            _ctf_log_command "$_previous_command"
-        fi
-    }
-    
-    # Append to existing PROMPT_COMMAND
-    if [ -n "$PROMPT_COMMAND" ]; then
-        PROMPT_COMMAND="_ctf_prompt_command; $PROMPT_COMMAND"
-    else
-        PROMPT_COMMAND="_ctf_prompt_command"
-    fi
-fi
+# ========== Quick CTF aliases ==========
+# These automatically use the ctf wrapper
+alias cn='ctf nmap -sV $CTF_IP'
+alias cna='ctf nmap -sC -sV -A $CTF_IP'
+alias cg='ctf gobuster dir -u http://$CTF_IP -w /usr/share/wordlists/dirbuster/directory-list-2.3-medium.txt'
+alias cff='ctf ffuf -u http://$CTF_IP/FUZZ -w /usr/share/wordlists/dirbuster/directory-list-2.3-medium.txt'
 
-# Hook for Zsh (if user uses zsh)
+# ========== Auto-log important commands ==========
+_ctf_log_command() {
+    [ -z "$1" ] && return
+    
+    # Only log certain commands automatically (without output)
+    case "$1" in
+        nmap*|gobuster*|ffuf*|nikto*|sqlmap*|hydra*|john*|hashcat*|msfconsole*|searchsploit*)
+            mkdir -p "$HOME/.ctf-brain/logs"
+            local timestamp=$(date -Iseconds)
+            local log_file="$HOME/.ctf-brain/logs/box-${CTF_ID}.jsonl"
+            local cmd_escaped=$(echo "$1" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read().strip()))' 2>/dev/null || echo "\"$1\"")
+            echo "{\"time\":\"$timestamp\",\"box_id\":$CTF_ID,\"cmd\":$cmd_escaped,\"result\":\"unknown\",\"auto\":true}" >> "$log_file"
+            ;;
+    esac
+}
+
+# Hook for Zsh
 if [ -n "$ZSH_VERSION" ]; then
     preexec() {
         _ctf_log_command "$1"
     }
+fi
+
+# Hook for Bash
+if [ -n "$BASH_VERSION" ]; then
+    trap '_ctf_last_command=$BASH_COMMAND' DEBUG
+    _ctf_prompt_command() {
+        local exit_code=$?
+        if [ -n "$_ctf_last_command" ]; then
+            _ctf_log_command "$_ctf_last_command"
+        fi
+    }
+    if [[ ! "$PROMPT_COMMAND" =~ "_ctf_prompt_command" ]]; then
+        PROMPT_COMMAND="_ctf_prompt_command${PROMPT_COMMAND:+; $PROMPT_COMMAND}"
+    fi
 fi
 "#;
 

@@ -1,7 +1,5 @@
 use crate::models::CtfBox;
 use std::collections::HashMap;
-#[cfg(unix)]
-use std::os::unix::process::CommandExt;
 use std::process::Command;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -230,6 +228,7 @@ impl App {
         }
     }
 
+    #[allow(dead_code)]
     pub fn delete_env_var(&mut self, box_id: i32, key: &str) -> Result<(), String> {
         if let Some(ctf_box) = self.boxes.iter_mut().find(|b| b.id == box_id) {
             if ctf_box.env_vars.remove(key).is_some() {
@@ -398,6 +397,51 @@ impl App {
             crate::models::NoteCategory::Stego,
             crate::models::NoteCategory::Misc,
         ]
+    }
+
+    // ========== Actions Import ==========
+
+    /// Import actions from shell logs into the box
+    pub fn import_shell_logs(&mut self, box_id: i32) -> Result<usize, String> {
+        let actions = crate::storage::import_shell_logs(box_id)
+            .map_err(|e| format!("Failed to import logs: {}", e))?;
+        
+        let count = actions.len();
+        
+        if let Some(ctf_box) = self.boxes.iter_mut().find(|b| b.id == box_id) {
+            // Merge actions, avoiding duplicates based on timestamp and command
+            for action in actions {
+                let exists = ctf_box.actions.iter().any(|a| 
+                    a.timestamp == action.timestamp && a.command == action.command
+                );
+                if !exists {
+                    ctf_box.actions.push(action);
+                }
+            }
+            ctf_box.updated_date = chrono::Utc::now();
+            
+            // Sort actions by timestamp
+            ctf_box.actions.sort_by(|a, b| a.timestamp.cmp(&b.timestamp));
+        }
+        
+        // Clear the logs after import
+        let _ = crate::storage::clear_shell_logs(box_id);
+        
+        Ok(count)
+    }
+
+    // ========== Write-up Generation ==========
+
+    /// Generate and save a write-up for a box
+    pub fn generate_writeup(&self, box_id: i32) -> Result<std::path::PathBuf, String> {
+        let ctf_box = self
+            .boxes
+            .iter()
+            .find(|b| b.id == box_id)
+            .ok_or("Box not found")?;
+        
+        crate::storage::save_writeup(ctf_box)
+            .map_err(|e| format!("Failed to generate writeup: {}", e))
     }
 
     /// Launch a shell with the box environment loaded

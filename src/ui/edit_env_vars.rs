@@ -39,7 +39,7 @@ pub fn render(f: &mut Frame, app: &App, form: Option<&EnvVarForm>, area: Rect, b
     f.render_widget(header, chunks[0]);
 
     // Variables list with selection
-    let keys: Vec<&String> = ctf_box.env_vars.keys().collect();
+    let _keys: Vec<&String> = ctf_box.env_vars.keys().collect();
     let var_items: Vec<ListItem> = ctf_box
         .env_vars
         .iter()

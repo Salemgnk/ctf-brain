@@ -4,7 +4,7 @@ mod storage;
 mod ui;
 
 use anyhow::Result;
-use app::{AddBoxForm, App, AppView, EnvVarForm};
+use app::{AddBoxForm, App, AppView, EnvVarForm, NoteForm};
 use crossterm::{
     cursor::Show,
     event::{self, Event, KeyCode, KeyEventKind},
@@ -51,12 +51,14 @@ fn main() -> Result<()> {
                         command: "nmap -sV 10.10.10.3".to_string(),
                         result: models::ActionResult::Success,
                         note: Some("Found open ports 21, 22, 445".to_string()),
+                        output: Some("PORT    STATE SERVICE     VERSION\n21/tcp  open  ftp         vsftpd 2.3.4\n22/tcp  open  ssh         OpenSSH 4.7p1\n445/tcp open  netbios-ssn Samba smbd 3.X".to_string()),
                     },
                     models::Action {
                         timestamp: chrono::Utc::now(),
                         command: "gobuster dir -u http://10.10.10.3".to_string(),
                         result: models::ActionResult::Fail,
                         note: None,
+                        output: None,
                     },
                 ],
                 notes: vec![
@@ -102,6 +104,7 @@ fn main() -> Result<()> {
                     command: "msfconsole".to_string(),
                     result: models::ActionResult::Unknown,
                     note: Some("Testing EternalBlue exploit".to_string()),
+                    output: None,
                 }],
                 notes: vec![],
                 env_vars: HashMap::new(),
@@ -112,6 +115,7 @@ fn main() -> Result<()> {
     let mut app = App::new(boxes);
     let mut add_box_form: Option<AddBoxForm> = None;
     let mut env_var_form: Option<EnvVarForm> = None;
+    let mut note_form: Option<NoteForm> = None;
 
     // Setup terminal
     enable_raw_mode()?;
@@ -155,6 +159,9 @@ fn main() -> Result<()> {
                 }
                 AppView::EditEnvVars(id) => {
                     ui::edit_env_vars::render(f, &app, env_var_form.as_ref(), main_chunks[0], *id);
+                }
+                AppView::EditNotes(id) => {
+                    ui::edit_notes::render(f, &app, note_form.as_ref(), main_chunks[0], *id);
                 }
             }
 
@@ -221,6 +228,91 @@ fn main() -> Result<()> {
                         match key.code {
                             KeyCode::Char('a') => {
                                 env_var_form = app.start_edit_env_vars(box_id);
+                            }
+                            KeyCode::Char('j') | KeyCode::Down => {
+                                app.next_env_var(box_id);
+                            }
+                            KeyCode::Char('k') | KeyCode::Up => {
+                                app.previous_env_var(box_id);
+                            }
+                            KeyCode::Char('d') => {
+                                if let Ok(_) = app.delete_selected_env_var(box_id) {
+                                    if let Err(e) = storage::save_boxes(&app.boxes) {
+                                        eprintln!("Failed to save: {}", e);
+                                    }
+                                }
+                            }
+                            KeyCode::Esc => {
+                                app.view = AppView::Details(box_id);
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+                // Handle EditNotes view
+                else if let AppView::EditNotes(box_id) = app.view {
+                    if let Some(form) = &mut note_form {
+                        match key.code {
+                            KeyCode::Char(c) => {
+                                form.content.push(c);
+                            }
+                            KeyCode::Backspace => {
+                                form.content.pop();
+                            }
+                            KeyCode::Left => {
+                                let categories_len = App::note_categories().len();
+                                if form.category_index == 0 {
+                                    form.category_index = categories_len - 1;
+                                } else {
+                                    form.category_index -= 1;
+                                }
+                            }
+                            KeyCode::Right => {
+                                let categories_len = App::note_categories().len();
+                                form.category_index = (form.category_index + 1) % categories_len;
+                            }
+                            KeyCode::Enter => {
+                                match app.add_note(box_id, form.category_index, form.content.clone()) {
+                                    Ok(_) => {
+                                        if let Err(e) = storage::save_boxes(&app.boxes) {
+                                            eprintln!("Failed to save: {}", e);
+                                        }
+                                        // Reset form
+                                        form.content.clear();
+                                        form.category_index = 0;
+                                    }
+                                    Err(e) => {
+                                        eprintln!("Error: {}", e);
+                                    }
+                                }
+                            }
+                            KeyCode::Esc => {
+                                app.view = AppView::Details(box_id);
+                                note_form = None;
+                            }
+                            _ => {}
+                        }
+                    } else {
+                        // No form active, just viewing
+                        match key.code {
+                            KeyCode::Char('a') => {
+                                note_form = Some(NoteForm {
+                                    content: String::new(),
+                                    category_index: 0,
+                                });
+                            }
+                            KeyCode::Char('j') | KeyCode::Down => {
+                                app.next_note(box_id);
+                            }
+                            KeyCode::Char('k') | KeyCode::Up => {
+                                app.previous_note(box_id);
+                            }
+                            KeyCode::Char('d') => {
+                                if let Ok(_) = app.delete_selected_note(box_id) {
+                                    if let Err(e) = storage::save_boxes(&app.boxes) {
+                                        eprintln!("Failed to save: {}", e);
+                                    }
+                                }
                             }
                             KeyCode::Esc => {
                                 app.view = AppView::Details(box_id);
@@ -296,11 +388,42 @@ fn main() -> Result<()> {
                                 env_var_form = app.start_edit_env_vars(id);
                             }
                         }
+                        // Touche 'n' dans Details pour éditer notes
+                        KeyCode::Char('n') if matches!(app.view, AppView::Details(_)) => {
+                            if let AppView::Details(id) = app.view {
+                                app.start_edit_notes(id);
+                            }
+                        }
+                        // Touche 'w' dans Details pour générer le write-up
+                        KeyCode::Char('w') if matches!(app.view, AppView::Details(_)) => {
+                            if let AppView::Details(id) = app.view {
+                                disable_raw_mode()?;
+                                execute!(terminal.backend_mut(), LeaveAlternateScreen, Show)?;
+                                
+                                match app.generate_writeup(id) {
+                                    Ok(path) => {
+                                        println!("\n\x1b[32m✔ Write-up generated: {}\x1b[0m", path.display());
+                                        println!("\nPress Enter to continue...");
+                                        let _ = std::io::stdin().read_line(&mut String::new());
+                                    }
+                                    Err(e) => {
+                                        eprintln!("\n\x1b[31m✗ Failed to generate write-up: {}\x1b[0m", e);
+                                        println!("\nPress Enter to continue...");
+                                        let _ = std::io::stdin().read_line(&mut String::new());
+                                    }
+                                }
+                                
+                                enable_raw_mode()?;
+                                execute!(terminal.backend_mut(), EnterAlternateScreen)?;
+                                terminal.clear()?;
+                            }
+                        }
                         // Touche 'l' pour lancer le shell
                         KeyCode::Char('l') => match &app.view {
                             AppView::List => {
                                 if let Some(idx) = app.selected_box_id {
                                     if let Some(ctf_box) = app.boxes.get(idx as usize) {
+                                        let box_id = ctf_box.id;
                                         disable_raw_mode()?;
                                         execute!(
                                             terminal.backend_mut(),
@@ -308,8 +431,20 @@ fn main() -> Result<()> {
                                             Show
                                         )?;
 
-                                        if let Err(e) = app.launch_box_shell(ctf_box.id) {
+                                        if let Err(e) = app.launch_box_shell(box_id) {
                                             eprintln!("Failed to launch shell: {}", e);
+                                        }
+
+                                        // Import shell logs after returning
+                                        match app.import_shell_logs(box_id) {
+                                            Ok(count) if count > 0 => {
+                                                println!("\n\x1b[32m✔ Imported {} commands from shell session\x1b[0m", count);
+                                                if let Err(e) = storage::save_boxes(&app.boxes) {
+                                                    eprintln!("Failed to save: {}", e);
+                                                }
+                                                std::thread::sleep(std::time::Duration::from_secs(1));
+                                            }
+                                            _ => {}
                                         }
 
                                         enable_raw_mode()?;
@@ -319,11 +454,24 @@ fn main() -> Result<()> {
                                 }
                             }
                             AppView::Details(id) => {
+                                let box_id = *id;
                                 disable_raw_mode()?;
                                 execute!(terminal.backend_mut(), LeaveAlternateScreen, Show)?;
 
-                                if let Err(e) = app.launch_box_shell(*id) {
+                                if let Err(e) = app.launch_box_shell(box_id) {
                                     eprintln!("Failed to launch shell: {}", e);
+                                }
+
+                                // Import shell logs after returning
+                                match app.import_shell_logs(box_id) {
+                                    Ok(count) if count > 0 => {
+                                        println!("\n\x1b[32m✔ Imported {} commands from shell session\x1b[0m", count);
+                                        if let Err(e) = storage::save_boxes(&app.boxes) {
+                                            eprintln!("Failed to save: {}", e);
+                                        }
+                                        std::thread::sleep(std::time::Duration::from_secs(1));
+                                    }
+                                    _ => {}
                                 }
 
                                 enable_raw_mode()?;
