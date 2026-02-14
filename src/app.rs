@@ -194,25 +194,27 @@ impl App {
     }
 
     pub fn start_delete_box(&mut self) {
-        if let Some(id) = self.selected_box_id {
-            // Find actual box index to make sure it exists
-            if self.boxes.iter().any(|b| b.id == id) {
-                self.view = AppView::DeleteBox(id);
+        if let Some(idx) = self.selected_box_id {
+            // Resolve the index to the actual box ID
+            if let Some(ctf_box) = self.boxes.get(idx as usize) {
+                self.view = AppView::DeleteBox(ctf_box.id);
             }
         }
     }
 
     pub fn confirm_delete_box(&mut self, id: i32) {
+        // Remember the current index before deletion
+        let prev_idx = self.selected_box_id.unwrap_or(0) as usize;
+
         self.boxes.retain(|b| b.id != id);
 
-        // Reset selection if necessary
+        // Recalculate selected index
         if self.boxes.is_empty() {
             self.selected_box_id = None;
-        } else if let Some(current) = self.selected_box_id {
-            if current == id {
-                // If we deleted the selected box, select the first one
-                self.selected_box_id = self.boxes.first().map(|b| b.id);
-            }
+        } else {
+            // Keep the same index, or clamp to the last element
+            let new_idx = prev_idx.min(self.boxes.len() - 1);
+            self.selected_box_id = Some(new_idx as i32);
         }
 
         self.view = AppView::List;

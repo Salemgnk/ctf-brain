@@ -39,9 +39,14 @@ pub fn load_boxes() -> Result<Vec<CtfBox>> {
     Ok(boxes)
 }
 
-/// Save boxes to the JSON file
+/// Save boxes to the JSON file (with automatic backup)
 pub fn save_boxes(boxes: &[CtfBox]) -> Result<()> {
     let path = get_data_path()?;
+    
+    // Create a backup before overwriting
+    if path.exists() {
+        backup_data(&path)?;
+    }
     
     // Serialize to pretty JSON for readability
     let json = serde_json::to_string_pretty(boxes)
@@ -50,6 +55,28 @@ pub fn save_boxes(boxes: &[CtfBox]) -> Result<()> {
     // Write to file
     fs::write(&path, json)
         .context("Failed to write boxes.json")?;
+    
+    Ok(())
+}
+
+/// Create a rotating backup of the data file.
+/// Keeps up to 5 backups: boxes.json.bak.1 (newest) to boxes.json.bak.5 (oldest)
+fn backup_data(path: &PathBuf) -> Result<()> {
+    let max_backups = 5;
+    
+    // Rotate existing backups: .bak.5 is deleted, .bak.4 → .bak.5, etc.
+    for i in (1..max_backups).rev() {
+        let older = path.with_extension(format!("json.bak.{}", i + 1));
+        let newer = path.with_extension(format!("json.bak.{}", i));
+        if newer.exists() {
+            let _ = fs::rename(&newer, &older);
+        }
+    }
+    
+    // Copy current file to .bak.1
+    let backup_path = path.with_extension("json.bak.1");
+    fs::copy(path, &backup_path)
+        .context("Failed to create backup of boxes.json")?;
     
     Ok(())
 }
