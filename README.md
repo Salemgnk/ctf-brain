@@ -11,9 +11,11 @@ Une application TUI (Terminal User Interface) en Rust pour organiser vos session
 - 🔧 **Tracking d'actions** - Gardez trace de ce que vous avez testé
 - 🔐 **Variables d'environnement** - Stockez tokens JWT, cookies, API keys par box
 - 🚀 **Lancement de shell** - Shell automatique avec IP et variables chargées
-- 📊 **Logging transparent** - Toutes les commandes sont enregistrées
+- 📊 **Logging transparent** - Toutes les commandes sont enregistrées avec output
+- ✍️ **Génération de write-up** - Export markdown structuré avec choix du chemin de sortie
 - 🎨 **Interface TUI moderne** - Navigation au clavier avec ratatui
-- 💾 **Persistence locale** - Sauvegarde automatique en JSON
+- 💾 **Persistence locale** - Sauvegarde automatique en JSON avec backups rotatifs
+- 📢 **Messages de status** - Feedback en temps réel des opérations
 
 ## 🚀 Installation
 
@@ -70,7 +72,9 @@ $ ctf-brain
 #    Les commandes sont importées automatiquement dans la box
 
 # 8. Générer le write-up Markdown (touche 'w' dans la vue Détails)
-#    Le chemin du fichier généré s'affiche
+#    Une vue d'export s'ouvre avec champ de saisie pour le chemin
+#    Entrez le chemin désiré et appuyez sur Enter
+#    Appuyez sur Esc pour annuler
 ```
 
 
@@ -92,9 +96,18 @@ $ ctf-brain
 | ------- | ------------------------------------- |
 | `e`     | Éditer les variables d'environnement   |
 | `n`     | Éditer les notes                      |
-| `w`     | Générer le write-up Markdown          |
+| `w`     | Ouvrir l'export write-up              |
 | `l`     | Lancer shell                          |
+| `d`     | Supprimer la box                      |
 | `Esc`   | Retour à la liste                     |
+
+#### Vue Export Write-up
+| Touche        | Action                             |
+| ------------- | ---------------------------------- |
+| Texte         | Éditer le chemin de sortie         |
+| `Backspace`   | Supprimer un caractère             |
+| `Enter`       | Exporter le write-up au chemin     |
+| `Esc`         | Annuler l'export                   |
 
 #### Shell CTF (après 'l')
 | Commande         | Action                                    |
@@ -182,10 +195,12 @@ echo $CTF_IP
 
 ## 📝 Fonctionnalités avancées
 
-- **Import automatique des commandes** : Après chaque session shell, les commandes passées via `ctf` sont importées dans la box correspondante.
-- **Génération de write-up** : Touche `w` dans la vue Détails → exporte un markdown structuré avec toutes les commandes, outputs et notes.
+- **Import automatique des commandes** : Après chaque session shell, les commandes passées via `ctf` sont importées dans la box correspondante avec leur output complet.
+- **Génération de write-up intelligente** : Touche `w` dans la vue Détails → saisie du chemin → export markdown structuré. Les sections vides sont omises automatiquement.
+- **Backups automatiques** : À chaque sauvegarde, un backup rotatif est créé (jusqu'à 5 anciens fichiers conservés). Protège contre les suppressions accidentelles.
 - **Aliases rapides** : Pour les outils classiques (nmap, gobuster, ffuf, etc).
 - **Variables d'environnement** : Disponibles dans le shell pour chaque box.
+- **Messages de status** : Feedback coloré et auto-expirant des opérations (erreurs en rouge, succès en vert).
 
 ## 📄 License
 
