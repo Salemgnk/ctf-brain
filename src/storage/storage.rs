@@ -131,7 +131,7 @@ struct LogEntry {
     auto: Option<bool>,
 }
 
-/// Generate a write-up markdown for a box
+/// Generate a write-up markdown for a box, skipping empty sections
 pub fn generate_writeup(ctf_box: &CtfBox) -> String {
     let mut md = String::new();
     
@@ -139,17 +139,10 @@ pub fn generate_writeup(ctf_box: &CtfBox) -> String {
     md.push_str(&format!("# {} - Write-up\n\n", ctf_box.title));
     md.push_str(&format!("**Platform:** {}  \n", ctf_box.platform));
     md.push_str(&format!("**IP:** {}  \n", ctf_box.ip_address));
-    md.push_str(&format!("**Tags:** {}  \n", ctf_box.tags.join(", ")));
+    if !ctf_box.tags.is_empty() {
+        md.push_str(&format!("**Tags:** {}  \n", ctf_box.tags.join(", ")));
+    }
     md.push_str(&format!("**Date:** {}  \n\n", ctf_box.created_date.format("%Y-%m-%d")));
-    md.push_str("---\n\n");
-    
-    // Table of contents
-    md.push_str("## Table of Contents\n\n");
-    md.push_str("1. [Reconnaissance](#reconnaissance)\n");
-    md.push_str("2. [Enumeration](#enumeration)\n");
-    md.push_str("3. [Exploitation](#exploitation)\n");
-    md.push_str("4. [Privilege Escalation](#privilege-escalation)\n");
-    md.push_str("5. [Flags](#flags)\n\n");
     md.push_str("---\n\n");
     
     // Collect notes by category
@@ -165,200 +158,143 @@ pub fn generate_writeup(ctf_box: &CtfBox) -> String {
     let web_notes: Vec<_> = ctf_box.notes.iter()
         .filter(|n| matches!(n.category, crate::models::NoteCategory::Web))
         .collect();
-    
-    // Reconnaissance section
-    md.push_str("## Reconnaissance\n\n");
-    
-    // Add recon notes
-    for note in &recon_notes {
-        md.push_str(&format!("- {}\n", note.content));
-    }
-    if !recon_notes.is_empty() {
-        md.push_str("\n");
-    }
-    
-    // Add nmap-like commands
+    let misc_notes: Vec<_> = ctf_box.notes.iter()
+        .filter(|n| matches!(n.category, 
+            crate::models::NoteCategory::Misc | 
+            crate::models::NoteCategory::Crypto | 
+            crate::models::NoteCategory::Pwn | 
+            crate::models::NoteCategory::Stego | 
+            crate::models::NoteCategory::Reversing))
+        .collect();
+
+    // Collect commands by category
     let recon_commands: Vec<_> = ctf_box.actions.iter()
         .filter(|a| a.command.contains("nmap") || a.command.contains("ping") || a.command.contains("whois"))
         .collect();
-    
-    for action in recon_commands {
-        md.push_str(&format!("### {}\n\n", action.command.split_whitespace().next().unwrap_or("Command")));
-        md.push_str(&format!("```bash\n$ {}\n", action.command));
-        if let Some(output) = &action.output {
-            md.push_str(output);
-            if !output.ends_with('\n') {
-                md.push_str("\n");
-            }
-        }
-        md.push_str("```\n\n");
-        
-        if let Some(note) = &action.note {
-            md.push_str(&format!("> **Note:** {}\n\n", note));
-        }
-    }
-    
-    // Enumeration section
-    md.push_str("## Enumeration\n\n");
-    
-    // Add web notes
-    for note in &web_notes {
-        md.push_str(&format!("- {}\n", note.content));
-    }
-    if !web_notes.is_empty() {
-        md.push_str("\n");
-    }
-    
-    // Add enumeration commands
     let enum_commands: Vec<_> = ctf_box.actions.iter()
         .filter(|a| {
-            a.command.contains("gobuster") || 
-            a.command.contains("ffuf") || 
-            a.command.contains("nikto") ||
-            a.command.contains("dirb") ||
-            a.command.contains("enum4linux") ||
-            a.command.contains("smbclient")
+            a.command.contains("gobuster") || a.command.contains("ffuf") || 
+            a.command.contains("nikto") || a.command.contains("dirb") ||
+            a.command.contains("enum4linux") || a.command.contains("smbclient")
         })
         .collect();
-    
-    for action in enum_commands {
-        md.push_str(&format!("### {}\n\n", action.command.split_whitespace().next().unwrap_or("Command")));
-        md.push_str(&format!("```bash\n$ {}\n", action.command));
-        if let Some(output) = &action.output {
-            // Truncate very long outputs
-            let truncated = if output.len() > 3000 {
-                format!("{}...\n[Output truncated]", &output[..3000])
-            } else {
-                output.clone()
-            };
-            md.push_str(&truncated);
-            if !truncated.ends_with('\n') {
-                md.push_str("\n");
-            }
-        }
-        md.push_str("```\n\n");
-    }
-    
-    // Exploitation section
-    md.push_str("## Exploitation\n\n");
-    
-    // Add foothold notes
-    for note in &foothold_notes {
-        md.push_str(&format!("- {}\n", note.content));
-    }
-    if !foothold_notes.is_empty() {
-        md.push_str("\n");
-    }
-    
-    // Add exploit commands
     let exploit_commands: Vec<_> = ctf_box.actions.iter()
         .filter(|a| {
-            a.command.contains("exploit") || 
-            a.command.contains("msfconsole") || 
-            a.command.contains("searchsploit") ||
-            a.command.contains("sqlmap") ||
-            a.command.contains("hydra") ||
-            a.command.contains("nc ") ||
-            a.command.contains("reverse")
+            a.command.contains("exploit") || a.command.contains("msfconsole") || 
+            a.command.contains("searchsploit") || a.command.contains("sqlmap") ||
+            a.command.contains("hydra") || a.command.contains("nc ") || a.command.contains("reverse")
         })
         .collect();
-    
-    for action in exploit_commands {
-        md.push_str(&format!("```bash\n$ {}\n", action.command));
-        if let Some(output) = &action.output {
-            let truncated = if output.len() > 2000 {
-                format!("{}...\n[Output truncated]", &output[..2000])
-            } else {
-                output.clone()
-            };
-            md.push_str(&truncated);
-            if !truncated.ends_with('\n') {
-                md.push_str("\n");
-            }
-        }
-        md.push_str("```\n\n");
-    }
-    
-    // Privilege Escalation section
-    md.push_str("## Privilege Escalation\n\n");
-    
-    // Add privesc notes
-    for note in &privesc_notes {
-        md.push_str(&format!("- {}\n", note.content));
-    }
-    if !privesc_notes.is_empty() {
-        md.push_str("\n");
-    }
-    
-    // Add privesc commands
     let privesc_commands: Vec<_> = ctf_box.actions.iter()
         .filter(|a| {
-            a.command.contains("sudo") || 
-            a.command.contains("linpeas") || 
-            a.command.contains("linenum") ||
-            a.command.contains("SUID") ||
-            a.command.contains("getcap") ||
-            a.command.contains("find / ")
+            a.command.contains("sudo") || a.command.contains("linpeas") || 
+            a.command.contains("linenum") || a.command.contains("SUID") ||
+            a.command.contains("getcap") || a.command.contains("find / ")
         })
         .collect();
+    let other_commands: Vec<_> = ctf_box.actions.iter()
+        .filter(|a| {
+            !a.command.contains("nmap") && !a.command.contains("ping") &&
+            !a.command.contains("gobuster") && !a.command.contains("ffuf") &&
+            !a.command.contains("nikto") && !a.command.contains("exploit") &&
+            !a.command.contains("msfconsole") && !a.command.contains("searchsploit") &&
+            !a.command.contains("sqlmap") && !a.command.contains("hydra") &&
+            !a.command.contains("sudo") && !a.command.contains("linpeas") &&
+            a.output.is_some()
+        })
+        .collect();
+
+    // Build dynamic table of contents
+    let mut toc = Vec::new();
+    let has_recon = !recon_notes.is_empty() || !recon_commands.is_empty();
+    let has_enum = !web_notes.is_empty() || !enum_commands.is_empty();
+    let has_exploit = !foothold_notes.is_empty() || !exploit_commands.is_empty();
+    let has_privesc = !privesc_notes.is_empty() || !privesc_commands.is_empty();
+    let has_misc = !misc_notes.is_empty();
+    let has_other = !other_commands.is_empty();
+
+    if has_recon { toc.push(("Reconnaissance", "reconnaissance")); }
+    if has_enum { toc.push(("Enumeration", "enumeration")); }
+    if has_exploit { toc.push(("Exploitation", "exploitation")); }
+    if has_privesc { toc.push(("Privilege Escalation", "privilege-escalation")); }
+    toc.push(("Flags", "flags"));
+    if has_misc { toc.push(("Additional Notes", "additional-notes")); }
+    if has_other { toc.push(("Command Log", "command-log")); }
+
+    md.push_str("## Table of Contents\n\n");
+    for (i, (title, anchor)) in toc.iter().enumerate() {
+        md.push_str(&format!("{}. [{}](#{})\n", i + 1, title, anchor));
+    }
+    md.push_str("\n---\n\n");
     
-    for action in privesc_commands {
-        md.push_str(&format!("```bash\n$ {}\n", action.command));
-        if let Some(output) = &action.output {
-            let truncated = if output.len() > 2000 {
-                format!("{}...\n[Output truncated]", &output[..2000])
-            } else {
-                output.clone()
-            };
-            md.push_str(&truncated);
-            if !truncated.ends_with('\n') {
-                md.push_str("\n");
-            }
+    // Reconnaissance
+    if has_recon {
+        md.push_str("## Reconnaissance\n\n");
+        for note in &recon_notes {
+            md.push_str(&format!("- {}\n", note.content));
         }
-        md.push_str("```\n\n");
+        if !recon_notes.is_empty() { md.push_str("\n"); }
+        for action in &recon_commands {
+            render_action(&mut md, action, 3000);
+        }
     }
     
-    // Flags section
+    // Enumeration
+    if has_enum {
+        md.push_str("## Enumeration\n\n");
+        for note in &web_notes {
+            md.push_str(&format!("- {}\n", note.content));
+        }
+        if !web_notes.is_empty() { md.push_str("\n"); }
+        for action in &enum_commands {
+            render_action(&mut md, action, 3000);
+        }
+    }
+    
+    // Exploitation
+    if has_exploit {
+        md.push_str("## Exploitation\n\n");
+        for note in &foothold_notes {
+            md.push_str(&format!("- {}\n", note.content));
+        }
+        if !foothold_notes.is_empty() { md.push_str("\n"); }
+        for action in &exploit_commands {
+            render_action(&mut md, action, 2000);
+        }
+    }
+    
+    // Privilege Escalation
+    if has_privesc {
+        md.push_str("## Privilege Escalation\n\n");
+        for note in &privesc_notes {
+            md.push_str(&format!("- {}\n", note.content));
+        }
+        if !privesc_notes.is_empty() { md.push_str("\n"); }
+        for action in &privesc_commands {
+            render_action(&mut md, action, 2000);
+        }
+    }
+    
+    // Flags — always present
     md.push_str("## Flags\n\n");
     md.push_str("### User Flag\n\n");
     md.push_str("```\n[USER FLAG HERE]\n```\n\n");
     md.push_str("### Root Flag\n\n");
     md.push_str("```\n[ROOT FLAG HERE]\n```\n\n");
     
-    // Miscellaneous notes
-    let misc_notes: Vec<_> = ctf_box.notes.iter()
-        .filter(|n| matches!(n.category, crate::models::NoteCategory::Misc | crate::models::NoteCategory::Crypto | crate::models::NoteCategory::Pwn | crate::models::NoteCategory::Stego | crate::models::NoteCategory::Reversing))
-        .collect();
-    
-    if !misc_notes.is_empty() {
+    // Additional Notes
+    if has_misc {
         md.push_str("---\n\n## Additional Notes\n\n");
-        for note in misc_notes {
+        for note in &misc_notes {
             md.push_str(&format!("- **{:?}:** {}\n", note.category, note.content));
         }
+        md.push_str("\n");
     }
     
-    // All other commands that weren't categorized
-    let other_commands: Vec<_> = ctf_box.actions.iter()
-        .filter(|a| {
-            !a.command.contains("nmap") &&
-            !a.command.contains("ping") &&
-            !a.command.contains("gobuster") &&
-            !a.command.contains("ffuf") &&
-            !a.command.contains("nikto") &&
-            !a.command.contains("exploit") &&
-            !a.command.contains("msfconsole") &&
-            !a.command.contains("searchsploit") &&
-            !a.command.contains("sqlmap") &&
-            !a.command.contains("hydra") &&
-            !a.command.contains("sudo") &&
-            !a.command.contains("linpeas") &&
-            a.output.is_some()
-        })
-        .collect();
-    
-    if !other_commands.is_empty() {
-        md.push_str("\n---\n\n## Command Log\n\n");
-        for action in other_commands {
+    // Command Log
+    if has_other {
+        md.push_str("---\n\n## Command Log\n\n");
+        for action in &other_commands {
             let result_icon = match action.result {
                 crate::models::ActionResult::Success => "✓",
                 crate::models::ActionResult::Fail => "✗",
@@ -367,41 +303,39 @@ pub fn generate_writeup(ctf_box: &CtfBox) -> String {
             md.push_str(&format!("### {} `{}`\n\n", result_icon, action.command));
             if let Some(output) = &action.output {
                 md.push_str("```\n");
-                let truncated = if output.len() > 1500 {
-                    format!("{}...\n[Output truncated]", &output[..1500])
-                } else {
-                    output.clone()
-                };
+                let truncated = truncate_output(output, 1500);
                 md.push_str(&truncated);
-                if !truncated.ends_with('\n') {
-                    md.push_str("\n");
-                }
+                if !truncated.ends_with('\n') { md.push_str("\n"); }
                 md.push_str("```\n\n");
             }
         }
     }
     
     md.push_str("\n---\n\n*Generated by CTF Brain*\n");
-    
     md
 }
 
-/// Save write-up to file
-pub fn save_writeup(ctf_box: &CtfBox) -> Result<PathBuf> {
-    let base_dir = dirs::home_dir()
-        .context("Unable to determine home directory")?
-        .join(".ctf-brain/writeups");
-    
-    fs::create_dir_all(&base_dir).context("Failed to create writeups directory")?;
-    
-    let filename = format!("{}-{}.md", 
-        ctf_box.title.to_lowercase().replace(' ', "-"),
-        ctf_box.created_date.format("%Y%m%d")
-    );
-    let path = base_dir.join(&filename);
-    
-    let content = generate_writeup(ctf_box);
-    fs::write(&path, &content).context("Failed to write writeup file")?;
-    
-    Ok(path)
+/// Render a single action as a markdown code block
+fn render_action(md: &mut String, action: &crate::models::Action, max_output: usize) {
+    let tool_name = action.command.split_whitespace().next().unwrap_or("Command");
+    md.push_str(&format!("### {}\n\n", tool_name));
+    md.push_str(&format!("```bash\n$ {}\n", action.command));
+    if let Some(output) = &action.output {
+        let truncated = truncate_output(output, max_output);
+        md.push_str(&truncated);
+        if !truncated.ends_with('\n') { md.push_str("\n"); }
+    }
+    md.push_str("```\n\n");
+    if let Some(note) = &action.note {
+        md.push_str(&format!("> **Note:** {}\n\n", note));
+    }
+}
+
+/// Truncate output to max_len chars
+fn truncate_output(output: &str, max_len: usize) -> String {
+    if output.len() > max_len {
+        format!("{}...\n[Output truncated]", &output[..max_len])
+    } else {
+        output.to_string()
+    }
 }

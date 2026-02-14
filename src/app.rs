@@ -1,6 +1,7 @@
 use crate::models::CtfBox;
 use std::collections::HashMap;
 use std::process::Command;
+use std::time::Instant;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum AppView {
@@ -10,6 +11,7 @@ pub enum AppView {
     DeleteBox(i32),
     EditEnvVars(i32),
     EditNotes(i32),
+    WriteupExport(i32),
 }
 
 #[derive(Debug, Clone)]
@@ -34,6 +36,14 @@ pub struct NoteForm {
     pub category_index: usize,
 }
 
+/// Message type for the status bar
+#[derive(Debug, Clone, PartialEq)]
+pub enum StatusKind {
+    Info,
+    Success,
+    Error,
+}
+
 pub struct App {
     pub view: AppView,
     pub boxes: Vec<CtfBox>,
@@ -41,6 +51,8 @@ pub struct App {
     pub should_quit: bool,
     pub selected_env_var: Option<usize>,
     pub selected_note: Option<usize>,
+    pub status_message: Option<(String, StatusKind, Instant)>,
+    pub writeup_path: String,
 }
 
 impl App {
@@ -53,6 +65,22 @@ impl App {
             should_quit: false,
             selected_env_var: None,
             selected_note: None,
+            status_message: None,
+            writeup_path: String::new(),
+        }
+    }
+
+    /// Set a status message that auto-expires after 4 seconds
+    pub fn set_status(&mut self, msg: impl Into<String>, kind: StatusKind) {
+        self.status_message = Some((msg.into(), kind, Instant::now()));
+    }
+
+    /// Clear the status message if it has expired
+    pub fn tick_status(&mut self) {
+        if let Some((_, _, when)) = &self.status_message {
+            if when.elapsed().as_secs() >= 4 {
+                self.status_message = None;
+            }
         }
     }
 
@@ -432,16 +460,40 @@ impl App {
 
     // ========== Write-up Generation ==========
 
-    /// Generate and save a write-up for a box
-    pub fn generate_writeup(&self, box_id: i32) -> Result<std::path::PathBuf, String> {
+    /// Start the write-up export flow with a default path
+    pub fn start_writeup_export(&mut self, box_id: i32) {
+        if let Some(ctf_box) = self.boxes.iter().find(|b| b.id == box_id) {
+            let filename = format!("{}-writeup.md",
+                ctf_box.title.to_lowercase().replace(' ', "-")
+            );
+            self.writeup_path = filename;
+            self.view = AppView::WriteupExport(box_id);
+        }
+    }
+
+    /// Generate and save a write-up for a box to the given path
+    pub fn generate_writeup(&mut self, box_id: i32) -> Result<std::path::PathBuf, String> {
         let ctf_box = self
             .boxes
             .iter()
             .find(|b| b.id == box_id)
             .ok_or("Box not found")?;
-        
-        crate::storage::save_writeup(ctf_box)
-            .map_err(|e| format!("Failed to generate writeup: {}", e))
+
+        let path = std::path::PathBuf::from(&self.writeup_path);
+
+        // Create parent directories if needed
+        if let Some(parent) = path.parent() {
+            if !parent.as_os_str().is_empty() {
+                std::fs::create_dir_all(parent)
+                    .map_err(|e| format!("Failed to create directory: {}", e))?;
+            }
+        }
+
+        let content = crate::storage::generate_writeup(ctf_box);
+        std::fs::write(&path, &content)
+            .map_err(|e| format!("Failed to write file: {}", e))?;
+
+        Ok(path)
     }
 
     /// Launch a shell with the box environment loaded

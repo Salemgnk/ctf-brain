@@ -4,7 +4,7 @@ mod storage;
 mod ui;
 
 use anyhow::Result;
-use app::{AddBoxForm, App, AppView, EnvVarForm, NoteForm};
+use app::{AddBoxForm, App, AppView, EnvVarForm, NoteForm, StatusKind};
 use crossterm::{
     cursor::Show,
     event::{self, Event, KeyCode, KeyEventKind},
@@ -126,16 +126,22 @@ fn main() -> Result<()> {
 
     // Main loop
     loop {
+        // Expire old status messages
+        app.tick_status();
+
         // Render
         terminal.draw(|f| {
             let area = f.area();
+
+            // Footer height: 3 if status message, 2 otherwise
+            let footer_height = if app.status_message.is_some() { 3 } else { 2 };
 
             // Create layout with footer
             let main_chunks = Layout::default()
                 .direction(Direction::Vertical)
                 .constraints([
-                    Constraint::Min(0),    // Main content
-                    Constraint::Length(2), // Footer
+                    Constraint::Min(0),                      // Main content
+                    Constraint::Length(footer_height),        // Footer
                 ])
                 .split(area);
 
@@ -144,15 +150,11 @@ fn main() -> Result<()> {
                 AppView::List => ui::list::render(f, &app, main_chunks[0]),
                 AppView::Details(id) => ui::detail::render(f, &app, main_chunks[0], *id),
                 AppView::DeleteBox(id) => {
-                    // Render list in background
                     ui::list::render(f, &app, main_chunks[0]);
-                    // Render delete modal on top
                     ui::delete_box::render(f, &app, main_chunks[0], *id);
                 }
                 AppView::AddBox => {
-                    // Render list in background
                     ui::list::render(f, &app, main_chunks[0]);
-                    // Render form modal on top
                     if let Some(form) = &add_box_form {
                         ui::add_box::render(f, &app, form, main_chunks[0]);
                     }
@@ -163,10 +165,13 @@ fn main() -> Result<()> {
                 AppView::EditNotes(id) => {
                     ui::edit_notes::render(f, &app, note_form.as_ref(), main_chunks[0], *id);
                 }
+                AppView::WriteupExport(id) => {
+                    ui::writeup_export::render(f, &app, main_chunks[0], *id);
+                }
             }
 
-            // Render footer with shortcuts
-            ui::footer::render_footer(f, &app.view, main_chunks[1]);
+            // Render footer with shortcuts + optional status
+            ui::footer::render_footer(f, &app.view, app.status_message.as_ref(), main_chunks[1]);
         })?;
 
         // Handle input
@@ -205,7 +210,9 @@ fn main() -> Result<()> {
                                 {
                                     Ok(_) => {
                                         if let Err(e) = storage::save_boxes(&app.boxes) {
-                                            eprintln!("Failed to save: {}", e);
+                                            app.set_status(format!("Save failed: {}", e), StatusKind::Error);
+                                        } else {
+                                            app.set_status("Variable added", StatusKind::Success);
                                         }
                                         // Reset form
                                         form.key.clear();
@@ -213,7 +220,7 @@ fn main() -> Result<()> {
                                         form.current_field = 0;
                                     }
                                     Err(e) => {
-                                        eprintln!("Error: {}", e);
+                                        app.set_status(e, StatusKind::Error);
                                     }
                                 }
                             }
@@ -236,9 +243,16 @@ fn main() -> Result<()> {
                                 app.previous_env_var(box_id);
                             }
                             KeyCode::Char('d') => {
-                                if let Ok(_) = app.delete_selected_env_var(box_id) {
-                                    if let Err(e) = storage::save_boxes(&app.boxes) {
-                                        eprintln!("Failed to save: {}", e);
+                                match app.delete_selected_env_var(box_id) {
+                                    Ok(_) => {
+                                        if let Err(e) = storage::save_boxes(&app.boxes) {
+                                            app.set_status(format!("Save failed: {}", e), StatusKind::Error);
+                                        } else {
+                                            app.set_status("Variable deleted", StatusKind::Success);
+                                        }
+                                    }
+                                    Err(e) => {
+                                        app.set_status(e, StatusKind::Error);
                                     }
                                 }
                             }
@@ -275,14 +289,16 @@ fn main() -> Result<()> {
                                 match app.add_note(box_id, form.category_index, form.content.clone()) {
                                     Ok(_) => {
                                         if let Err(e) = storage::save_boxes(&app.boxes) {
-                                            eprintln!("Failed to save: {}", e);
+                                            app.set_status(format!("Save failed: {}", e), StatusKind::Error);
+                                        } else {
+                                            app.set_status("Note added", StatusKind::Success);
                                         }
                                         // Reset form
                                         form.content.clear();
                                         form.category_index = 0;
                                     }
                                     Err(e) => {
-                                        eprintln!("Error: {}", e);
+                                        app.set_status(e, StatusKind::Error);
                                     }
                                 }
                             }
@@ -308,9 +324,16 @@ fn main() -> Result<()> {
                                 app.previous_note(box_id);
                             }
                             KeyCode::Char('d') => {
-                                if let Ok(_) = app.delete_selected_note(box_id) {
-                                    if let Err(e) = storage::save_boxes(&app.boxes) {
-                                        eprintln!("Failed to save: {}", e);
+                                match app.delete_selected_note(box_id) {
+                                    Ok(_) => {
+                                        if let Err(e) = storage::save_boxes(&app.boxes) {
+                                            app.set_status(format!("Save failed: {}", e), StatusKind::Error);
+                                        } else {
+                                            app.set_status("Note deleted", StatusKind::Success);
+                                        }
+                                    }
+                                    Err(e) => {
+                                        app.set_status(e, StatusKind::Error);
                                     }
                                 }
                             }
@@ -319,6 +342,35 @@ fn main() -> Result<()> {
                             }
                             _ => {}
                         }
+                    }
+                }
+                // Handle WriteupExport view
+                else if let AppView::WriteupExport(box_id) = app.view {
+                    match key.code {
+                        KeyCode::Char(c) => {
+                            app.writeup_path.push(c);
+                        }
+                        KeyCode::Backspace => {
+                            app.writeup_path.pop();
+                        }
+                        KeyCode::Enter => {
+                            match app.generate_writeup(box_id) {
+                                Ok(path) => {
+                                    app.set_status(
+                                        format!("Write-up exported → {}", path.display()),
+                                        StatusKind::Success,
+                                    );
+                                    app.view = AppView::Details(box_id);
+                                }
+                                Err(e) => {
+                                    app.set_status(e, StatusKind::Error);
+                                }
+                            }
+                        }
+                        KeyCode::Esc => {
+                            app.view = AppView::Details(box_id);
+                        }
+                        _ => {}
                     }
                 }
                 // If in AddBox form, handle text input first
@@ -352,12 +404,14 @@ fn main() -> Result<()> {
                             KeyCode::Enter => match app.submit_add_box(form) {
                                 Ok(_) => {
                                     if let Err(e) = storage::save_boxes(&app.boxes) {
-                                        eprintln!("Failed to save: {}", e);
+                                        app.set_status(format!("Save failed: {}", e), StatusKind::Error);
+                                    } else {
+                                        app.set_status("Box added", StatusKind::Success);
                                     }
                                     add_box_form = None;
                                 }
                                 Err(e) => {
-                                    eprintln!("Validation error: {}", e);
+                                    app.set_status(e, StatusKind::Error);
                                 }
                             },
                             KeyCode::Esc => {
@@ -394,28 +448,10 @@ fn main() -> Result<()> {
                                 app.start_edit_notes(id);
                             }
                         }
-                        // Touche 'w' dans Details pour générer le write-up
+                        // Touche 'w' dans Details pour ouvrir l'export write-up
                         KeyCode::Char('w') if matches!(app.view, AppView::Details(_)) => {
                             if let AppView::Details(id) = app.view {
-                                disable_raw_mode()?;
-                                execute!(terminal.backend_mut(), LeaveAlternateScreen, Show)?;
-                                
-                                match app.generate_writeup(id) {
-                                    Ok(path) => {
-                                        println!("\n\x1b[32m✔ Write-up generated: {}\x1b[0m", path.display());
-                                        println!("\nPress Enter to continue...");
-                                        let _ = std::io::stdin().read_line(&mut String::new());
-                                    }
-                                    Err(e) => {
-                                        eprintln!("\n\x1b[31m✗ Failed to generate write-up: {}\x1b[0m", e);
-                                        println!("\nPress Enter to continue...");
-                                        let _ = std::io::stdin().read_line(&mut String::new());
-                                    }
-                                }
-                                
-                                enable_raw_mode()?;
-                                execute!(terminal.backend_mut(), EnterAlternateScreen)?;
-                                terminal.clear()?;
+                                app.start_writeup_export(id);
                             }
                         }
                         // Touche 'l' pour lancer le shell
@@ -438,11 +474,9 @@ fn main() -> Result<()> {
                                         // Import shell logs after returning
                                         match app.import_shell_logs(box_id) {
                                             Ok(count) if count > 0 => {
-                                                println!("\n\x1b[32m✔ Imported {} commands from shell session\x1b[0m", count);
                                                 if let Err(e) = storage::save_boxes(&app.boxes) {
-                                                    eprintln!("Failed to save: {}", e);
+                                                    eprintln!("Save failed: {}", e);
                                                 }
-                                                std::thread::sleep(std::time::Duration::from_secs(1));
                                             }
                                             _ => {}
                                         }
@@ -450,6 +484,9 @@ fn main() -> Result<()> {
                                         enable_raw_mode()?;
                                         execute!(terminal.backend_mut(), EnterAlternateScreen)?;
                                         terminal.clear()?;
+
+                                        // Show status in TUI after returning
+                                        app.set_status("Shell session ended — commands imported", StatusKind::Info);
                                     }
                                 }
                             }
@@ -465,11 +502,9 @@ fn main() -> Result<()> {
                                 // Import shell logs after returning
                                 match app.import_shell_logs(box_id) {
                                     Ok(count) if count > 0 => {
-                                        println!("\n\x1b[32m✔ Imported {} commands from shell session\x1b[0m", count);
                                         if let Err(e) = storage::save_boxes(&app.boxes) {
-                                            eprintln!("Failed to save: {}", e);
+                                            eprintln!("Save failed: {}", e);
                                         }
-                                        std::thread::sleep(std::time::Duration::from_secs(1));
                                     }
                                     _ => {}
                                 }
@@ -477,6 +512,8 @@ fn main() -> Result<()> {
                                 enable_raw_mode()?;
                                 execute!(terminal.backend_mut(), EnterAlternateScreen)?;
                                 terminal.clear()?;
+
+                                app.set_status("Shell session ended — commands imported", StatusKind::Info);
                             }
                             _ => {}
                         },
@@ -492,7 +529,9 @@ fn main() -> Result<()> {
                                 if c == 'y' || c == 'Y' {
                                     app.confirm_delete_box(id);
                                     if let Err(e) = storage::save_boxes(&app.boxes) {
-                                        eprintln!("Failed to save: {}", e);
+                                        app.set_status(format!("Save failed: {}", e), StatusKind::Error);
+                                    } else {
+                                        app.set_status("Box deleted", StatusKind::Success);
                                     }
                                 } else if c == 'n' || c == 'N' {
                                     app.cancel_delete();
